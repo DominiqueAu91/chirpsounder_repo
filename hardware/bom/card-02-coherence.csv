@@ -1,0 +1,14 @@
+ref,component,quantity,unit_price_eur,total_eur,supplier,notes
+J1,SMA panel 50 Ω,1,3.00,3.00,Mouser,GPSDO reference input
+U1,ADCMP562BRQZ comparator,1,8.00,8.00,Mouser,Or 74AC04 economical (€0.50)
+U2,Adafruit Si5351 breakout,1,8.00,8.00,Adafruit/Pimoroni,Sine-mode capable
+U3,ADF4351 module Chinese,1,18.00,18.00,AliExpress,Includes loop filter and SMA out
+R_termination,50 Ω + bias resistors,4,0.10,0.40,LCSC,
+C_decoup,Decoupling caps + ferrite BLM18AG121,8,0.25,2.00,LCSC,Including BLM18AG121 ferrite
+Pad_LO,R 5.6/470/470 Ω 0603 1% (-1 dB pi),3,0.30,0.90,LCSC,V0.2: was -2 dB pad
+LPF_CLK0,Inductors 470 nH + caps 100/47 pF,5,0.40,2.00,LCSC,V0.2 NEW: 3-pole LPF on CLK0
+Divider_XTA,R 1 kΩ + R 100 Ω 0603 1%,2,0.10,0.20,LCSC,V0.2 NEW: amplitude conditioning
+Sockets,Female header 1x7 + 1x10,2,1.00,2.00,LCSC,For Si5351/ADF4351 modules
+Connectors_inter,SMA inter-card pigtails,2,3.00,6.00,Mouser,
+Faraday_can,Tinplate shield can with cover,1,2.50,2.50,Mouser,For PLL VCOs
+TOTAL,,,,€53.00,,V0.2 vs V0.1: +€3 for LPF + divider

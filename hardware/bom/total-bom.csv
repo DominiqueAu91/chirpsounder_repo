@@ -1,0 +1,13 @@
+card,subtotal_eur,notes
+Card 1 - Power,10.00,Linear regulation cascade
+Card 2 - Coherence,53.00,V0.2 +€3 vs V0.1 (LPF + divider)
+Card 3 - RF-Low,55.10,V0.2 +€9 vs V0.1 (SAW + ADE-R3+)
+Card 4 - RF-High,138.00,V0.2 +€38 vs V0.1 (ESD + BN43-7051 + ferrite)
+Card 5 - Control,28.00,
+Card 6 - Safety,18.20,
+Subtotal cards,302.30,
+Enclosure (Hammond 1590DD or larger),30.00,
+PCB JLCPCB 2 layers x6 cards,30.00,5-piece lot per card
+Cabling (coax SMA cables fasteners),20.00,
+TOTAL HARDWARE,382.50,Excluding GPSDO + antenna
+,,V0.1 was €330 - V0.2 is €383 (+€53 for design corrections)

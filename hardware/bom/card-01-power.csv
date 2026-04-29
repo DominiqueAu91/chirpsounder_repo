@@ -1,0 +1,11 @@
+ref,component,quantity,unit_price_eur,total_eur,supplier,notes
+F1,Polyfuse 3A 30V resettable,1,1.00,1.00,Mouser/Farnell,Auto-recovers after overcurrent
+TVS,SMBJ16CA bidirectional,1,0.50,0.50,Mouser,ESD/transient protection
+D1,1N5822 Schottky 3A,1,0.50,0.50,Mouser,Reverse-polarity protection 0.4 V drop
+U_12V,LM7812 TO-220 + clip-on heatsink,1,1.50,1.50,Mouser,~1 W dissipation expected
+U_5V,LM7805 TO-220 + clip-on heatsink,1,1.50,1.50,Mouser,
+U_3V3,AMS1117-3.3 SOT-223,1,0.50,0.50,LCSC,
+C_decoup,10 µF tantalum + 100 nF X7R pairs,12,0.25,3.00,LCSC,Decoupling all rails
+LED_ON,LED red 5mm + R 1k5,1,0.50,0.50,LCSC,Power-on indicator
+J_DC,Barrel jack 5.5/2.1 mm panel,1,1.00,1.00,Mouser,
+TOTAL,,,,€10.00,,

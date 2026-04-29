@@ -1,0 +1,10 @@
+ref,component,quantity,unit_price_eur,total_eur,supplier,notes
+U_WD,NE555 timer DIP-8,1,0.50,0.50,LCSC,Watchdog retriggerable
+U_thermal,LM393 comparator DIP-8,1,1.00,1.00,LCSC,Thermal protection
+Relay,DPDT 12V coil 5A contacts,1,4.00,4.00,Mouser,
+Diode_FB,1N4007 flyback,1,0.20,0.20,LCSC,Across relay coil
+Kill_SW,Push-button latching SPST 16 mm red ALPS,1,8.00,8.00,Mouser,Panel mount
+LEDs,LED green/red/orange/blue 5 mm + R,4,0.50,2.00,LCSC,Status indicators
+R_C_timing,Network timing 555 + bias LM393,1,2.00,2.00,LCSC,Including R_t 33k + C_t 47 µF
+Opto,4N35 5kV galvanic isolation,1,0.50,0.50,LCSC,Software EN coupling
+TOTAL,,,,€18.20,,

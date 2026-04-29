@@ -1,0 +1,11 @@
+ref,component,quantity,unit_price_eur,total_eur,supplier,notes
+MCU,Raspberry Pi Pico,1,5.00,5.00,Pi Foundation,RP2040 + 2 MB flash
+OLED,128x64 SSD1306 I²C 0.96",1,5.00,5.00,LCSC,
+Encoder,KY-040 rotary + push,1,2.00,2.00,LCSC,24-detent
+Buttons,Tactile 12 mm x 3 (red/green/yellow),3,1.00,3.00,LCSC,RUN/STOP/MENU
+USB_host,CH376S USB host module,1,4.00,4.00,LCSC,FAT16/32 logging
+USB_A,USB-A panel female,1,2.00,2.00,Mouser,For USB stick
+USB_B,USB-B panel female,1,2.00,2.00,Mouser,For Pico configuration
+R_pullups,Pull-up resistors + decoupling,1,2.00,2.00,LCSC,Bulk lot
+Sockets,Female headers for Pico + modules,1,3.00,3.00,LCSC,Bulk lot
+TOTAL,,,,€28.00,,

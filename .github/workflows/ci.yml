@@ -1,0 +1,43 @@
+name: Documentation lint
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  markdown-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@v15
+        with:
+          globs: "**/*.md"
+
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install black ruff
+      - name: Run black
+        run: black --check software/
+      - name: Run ruff
+        run: ruff check software/
+
+  bom-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate BoM CSVs are well-formed
+        run: |
+          for csv in hardware/bom/*.csv; do
+            python3 -c "import csv; list(csv.DictReader(open('$csv')))"
+          done
