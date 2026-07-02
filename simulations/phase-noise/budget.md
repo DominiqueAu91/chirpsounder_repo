@@ -14,7 +14,8 @@
 ## Verification
 
 Combined RSS calculation:
-```
+
+```text
 P_total = -10 * log10(sum(10^(P_i/10) for i in sources))
         ≈ -95 dBc/Hz @ 1 kHz offset
 ```
@@ -22,27 +23,32 @@ P_total = -10 * log10(sum(10^(P_i/10) for i in sources))
 ## Margin analysis for SF12 / BW = 7.8 kHz
 
 Pulse compression gain at SF12:
-```
+
+```text
 G_pc = 10 * log10(2^12) = 36 dB
 ```
 
 Required SNR at output of compression for detection:
-```
+
+```text
 SNR_out = 10 dB (typical for ionogram pixel)
 ```
 
 Required SNR at input:
-```
+
+```text
 SNR_in = SNR_out - G_pc = 10 - 36 = -26 dB
 ```
 
 Phase noise contribution to noise floor in 1 Hz bandwidth:
-```
+
+```text
 N_pn = -95 dBc/Hz
 ```
 
 For BW = 7.8 kHz integration:
-```
+
+```text
 N_pn_total = -95 + 10 * log10(7800) = -95 + 38.9 = -56 dBc
 ```
 

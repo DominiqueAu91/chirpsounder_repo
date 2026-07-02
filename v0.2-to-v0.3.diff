@@ -1,0 +1,1059 @@
+diff -ruN chirpsounder_repo-main/README.md chirpsounder_repo-v0.3/README.md
+--- chirpsounder_repo-main/README.md	2026-04-29 21:58:35.000000000 +0000
++++ chirpsounder_repo-v0.3/README.md	2026-07-02 08:44:47.986457764 +0000
+@@ -19,20 +19,28 @@
+ 
+ - A Python / GNU Radio receiver that dechirps existing opportunity illuminators
+   (military chirpsounders, CODAR, amateur SX1262 signals) — **phase 1, no transmission**.
++  Since V0.3 the reference RX platform is the wsprdaemon architecture (GPSDO +
++  RX888 MkII + miniPC) running [ka9q-radio](https://github.com/ka9q/ka9q-radio),
++  so existing wsprdaemon stations become sounder nodes at zero hardware cost.
+ - A standalone 30m transmitter disciplined by an amateur GPSDO, NCDXF-style regulatory
+   practice, BoM ~€330 — **phase 2, after RX validation**.
+ - A standardized HDF5 archival format, compatible with professional ionospheric models
+   (IRI, NeQuick) — **shared data infrastructure**.
+ - A coordinated operational protocol with REF / IARU R1 for transmitting nodes.
+ 
+-## Status — V0.2
++## Status — V0.3
+ 
+ - ✅ Conceptual architecture defined (6-card partitioning)
+ - ✅ RF chain budget computed and revised after V0.1 review
+ - ✅ V0.1 design flaws identified and addressed (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md))
+-- 🚧 Card-level schematics under revision (V0.2)
++- ✅ **V0.3: receiver platform migrated to ka9q-radio / RX888 MkII (wsprdaemon
++  architecture)** — see [`docs/architecture/rx-ka9q.md`](docs/architecture/rx-ka9q.md)
++- ✅ Stepped-LO dechirp chain implemented and validated by simulation
++  ([`software/ka9q-backend/`](software/ka9q-backend/))
++- ✅ First gr-chirpsounder block implemented: `ka9q_iq_source`
++- 🚧 Card-level schematics under revision (TX, unchanged since V0.2)
+ - 🚧 PCB floorplans pending KiCad migration
+-- ⏳ Phase 1 RX bench validation — next milestone
++- ⏳ Phase 1 RX on-air validation against a known sounder — next milestone
+ - ⏳ TX bench validation — after RX validated end-to-end
+ 
+ ## Repository structure
+@@ -41,7 +49,7 @@
+ docs/             Design documents, theory, calculations, operating practice
+ hardware/         Schematics, BoM, KiCad placeholders
+ firmware/         RP2040 firmware (control card)
+-software/         GNU Radio out-of-tree module + Python tools
++software/         GNU Radio OOT module, ka9q-radio backend, Python tools
+ simulations/      Filter synthesis, phase noise modeling
+ tests/            Bench validation procedures, field test logs
+ .github/          CI workflows and issue templates
+@@ -60,9 +68,9 @@
+ 
+ | Phase | Goal | Duration | Status |
+ |-------|------|----------|--------|
+-| 0 | Repository scaffold, V0.2 design freeze | 1 month | 🚧 |
+-| 1 | Python PoC dechirp on ANTSDR + GPSDO | 2-3 months | ⏳ |
+-| 2 | `gr-chirpsounder` GNU Radio module | 3-4 months | ⏳ |
++| 0 | Repository scaffold, V0.3 design freeze | 1 month | 🚧 |
++| 1 | Python PoC dechirp on ka9q-radio / RX888 MkII + GPSDO | 2-3 months | 🚧 |
++| 2 | `gr-chirpsounder` GNU Radio module (`ka9q_iq_source` done) | 3-4 months | 🚧 |
+ | 3 | TX prototype validation, single node | 6 months | ⏳ |
+ | 4 | First multi-node operations (3-4 stations) | 12 months | ⏳ |
+ 
+diff -ruN chirpsounder_repo-main/docs/CHANGELOG.md chirpsounder_repo-v0.3/docs/CHANGELOG.md
+--- chirpsounder_repo-main/docs/CHANGELOG.md	2026-04-29 21:58:35.000000000 +0000
++++ chirpsounder_repo-v0.3/docs/CHANGELOG.md	2026-07-02 08:45:57.390474408 +0000
+@@ -4,6 +4,71 @@
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+ 
++## [V0.3] — 2026-07 — Receiver platform migration to ka9q-radio
++
++### Scope
++
++V0.3 is a **receiver-side** revision only. The transmitter design (six-card
++architecture, RF budget) is unchanged from V0.2. The direct-SDR receiver
++options of V0.2 (ANTSDR E200, Hermes-Lite 2, RTL-SDR + upconverter) are
++replaced as reference platform by the **wsprdaemon architecture**: GPSDO +
++RX888 MkII + Beelink miniPC (Ubuntu Server 24.04 LTS) running
++**ka9q-radio** (`radiod`).
++
++Rationale, theory and implementation details:
++[`docs/architecture/rx-ka9q.md`](architecture/rx-ka9q.md).
++
++### Architectural changes
++
++- **Capture model changed.** Behind `radiod` the raw 64.8 Msps stream is not
++  exposed; instead of wideband capture + offline dechirp, the receiver uses a
++  **stepped-LO tracking channel** (96 kHz IQ retuned by 48 kHz every 0.48 s
++  at 100 kHz/s) for opportunity sweepers, and a **single fixed channel** for
++  the project's own 30 m SX1262 sounder. Per-dwell stretch processing is
++  mathematically validated by `software/ka9q-backend/test_dechirp_sim.py`
++  (two-path synthetic ionosphere; delays recovered to within one FFT bin,
++  16.7 µs at the default 0.12 s window).
++- **Frequency vs time-of-day discipline made explicit.** The GPSDO
++  disciplines the RX888 sample clock only. Absolute group delay requires
++  host time discipline: gpsd + chrony on the GPSDO 1PPS, plus a one-time
++  `--tau-bias` calibration absorbing radiod pipeline latency (1 ms of clock
++  error = 300 km of one-way virtual range).
++
++### Additions
++
++- `software/ka9q-backend/` — radiod configuration, `chirp_tracker.py`
++  (sweep tracking via the ka9q-radio `tune` utility + `pcmrecord` ingest),
++  `dechirp_sweep.py` (segments → ionogram), `test_dechirp_sim.py`.
++- `software/gr-chirpsounder/python/ka9q_iq_source.py` — first implemented
++  block of the OOT module: native RTP multicast source (f32le/s16le/s16be
++  payloads, SSRC filtering, zero-fill on sequence gaps). Replaces the
++  planned ANTSDR/Hermes/RTL-SDR source flowgraphs.
++- `docs/architecture/rx-ka9q.md` — receiver architecture document.
++
++### Implementation notes traceable to ka9q-radio sources (2026-07)
++
++- radiod creates channels **dynamically** on a `tune` command for an unknown
++  SSRC; static config sections force SSRC = freq/kHz — hence no static chirp
++  section in `radiod@chirp.conf`.
++- Default channel encoding is `s16be`; V0.3 pins `f32le` end to end.
++- The `iq` preset defaults to ±5 kHz filter edges; the tracker overrides to
++  ±46 kHz, otherwise 90 % of the channel bandwidth is silently discarded.
++
++### Housekeeping
++
++- `software/examples/dechirp_basic.py` reformatted with black — the V0.2
++  file did not pass the repository's own `python-lint` CI job. All V0.3
++  Python files pass `black --check` and `ruff check`.
++
++### BoM impact
++
++Receiver BoM for stations already running wsprdaemon: **€0** (the same
++RX888/miniPC serves both). For new stations, the wsprdaemon hardware kit
++(per HamSCI sourcing guide) replaces the ANTSDR E200 line item. TX BoM
++unchanged (~€385 excluding GPSDO).
++
++---
++
+ ## [V0.2] — 2026-04 — Design review #1
+ 
+ ### Major design corrections following V0.1 internal review
+diff -ruN chirpsounder_repo-main/docs/architecture/overview.md chirpsounder_repo-v0.3/docs/architecture/overview.md
+--- chirpsounder_repo-main/docs/architecture/overview.md	2026-04-29 21:58:35.000000000 +0000
++++ chirpsounder_repo-v0.3/docs/architecture/overview.md	2026-07-02 08:45:06.459630273 +0000
+@@ -121,6 +121,15 @@
+ 9. ADF4351 LO drive bumped to +8 dBm
+ 10. RF chain budget fully recomputed
+ 
++## Receiver architecture (V0.3)
++
++This document covers the **transmitter**. Since V0.3 the receive side runs on
++the wsprdaemon reference hardware (GPSDO + RX888 MkII + Beelink miniPC) with
++ka9q-radio's `radiod` as channelizer; the sounder RX coexists with WSPR
++decoding on the same box. Design principle 1 (coherence by construction)
++extends to RX through the GPSDO-disciplined RX888 sample clock. Full details:
++[`rx-ka9q.md`](rx-ka9q.md).
++
+ ## Open questions
+ 
+ - **Two-stage conversion?** The IF/LO ratio of 1.1% with single-stage conversion
+diff -ruN chirpsounder_repo-main/docs/architecture/rx-ka9q.md chirpsounder_repo-v0.3/docs/architecture/rx-ka9q.md
+--- chirpsounder_repo-main/docs/architecture/rx-ka9q.md	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/docs/architecture/rx-ka9q.md	2026-07-02 08:43:53.554454528 +0000
+@@ -0,0 +1,129 @@
++# Receiver architecture — ka9q-radio backend (V0.3)
++
++V0.3 replaces the direct-SDR receivers of V0.2 (ANTSDR E200, Hermes-Lite 2,
++RTL-SDR + upconverter) with the **wsprdaemon reference hardware** running
++**ka9q-radio**:
++
++```
++HF antenna
++   |
++   v
++RX888 MkII  (16-bit direct sampling, 64.8 Msps)
++   |  27 MHz ext. reference from GPSDO  (frequency discipline)
++   v
++Beelink miniPC — Ubuntu Server 24.04 LTS
++   |  gpsd + chrony on GPSDO 1PPS       (time-of-day discipline)
++   v
++radiod  (ka9q-radio: fast-convolution filterbank, ttl=0 multicast)
++   |
++   +--> chirp-iq.local, SSRC 5001  — IQ channel, 96 kHz, f32le
++   |        |
++   |        +--> software/ka9q-backend/chirp_tracker.py   (sweep tracking)
++   |        +--> gr-chirpsounder ka9q_iq_source block     (GNU Radio)
++   |
++   +--> wspr-pcm.local — the same box keeps serving wsprdaemon
++```
++
++## Rationale
++
++1. **One box, many instruments.** radiod demodulates hundreds of channels
++   from a single A/D stream. The chirpsounder receiver coexists with a full
++   wsprdaemon installation on the same RX888 — the marginal hardware cost of
++   the sounder RX is zero for the many stations already running this stack.
++2. **Coherence for free.** The RX888 external 27 MHz reference is disciplined
++   by the station GPSDO; every radiod channel inherits GPS frequency accuracy,
++   matching design principle 1 (coherence by construction) on the RX side.
++3. **Standard ProAm platform.** HamSCI/wsprdaemon already documents sourcing,
++   assembly and tuning of exactly this hardware, lowering the entry barrier
++   for network nodes.
++
++## Two reception modes
++
++### Mode A — fixed channel (SX1262 sounder on 30 m, CODAR)
++
++The project's own transmitter emits short repeating chirps of bandwidth
++7.8–500 kHz around 10.1 MHz. One **static** radiod IQ channel covers this
++entirely — no retuning. The stream feeds either the reference pipeline
++(`software/examples/dechirp_basic.py`, unchanged) or the `gr-chirpsounder`
++flowgraph through the `ka9q_iq_source` block.
++
++Channel setup (dynamic, from the shell):
++
++```sh
++tune --radio hf.local --ssrc 5001 --mode iq --samprate 96k \
++     --encoding f32le --low -46k --high +46k \
++     --destination chirp-iq.local --frequency 10m120
++```
++
++### Mode B — swept channel (opportunity illuminators, 2–30 MHz)
++
++Military/ionospheric sweepers chirp the whole HF band at typically
++50–125 kHz/s. Behind radiod the raw 64.8 Msps stream is neither available
++nor needed: `chirp_tracker.py` implements a **stepped-LO tracking
++receiver** — the 96 kHz channel is retuned by 48 kHz every 0.48 s
++(at 100 kHz/s) with the ka9q-radio `tune` utility, and each dwell is
++dechirped independently against the synthetic zero-delay reference.
++
++Stretch-processing identity: a path of group delay τ appears after dechirp
++as a tone at −Rτ (R = chirp rate). Per-dwell STFT columns assemble directly
++into the ionogram.
++
++| Quantity | Expression | Default value |
++|----------|-----------|---------------|
++| Dwell duration | (B/2)/R | 0.48 s (B = 96 kHz, R = 100 kHz/s) |
++| Delay resolution | 1/(R·T_win) | 100 µs → 15 km one-way (T_win = 0.1 s) |
++| Doppler-induced delay error | f_d/R | 10 µs per Hz |
++| Retune guard (discarded) | ≥ 2 radiod blocks | 50 ms |
++
++radiod retunes are **not phase-continuous**; this is irrelevant because
++dwells are processed independently. The DSP chain is validated offline by
++`software/ka9q-backend/test_dechirp_sim.py` (two-path synthetic ionosphere,
++delays recovered to within one FFT bin).
++
++## Timing discipline — frequency vs time-of-day
++
++The GPSDO disciplines the RX888 **sample clock** (chirp-rate match, Doppler
++integrity). It does **not** set the host **time-of-day**, which maps delay to
++absolute range: a wallclock error of 1 ms shifts the whole ionogram by
++300 km of one-way virtual range. Requirements:
++
++- gpsd + chrony with the GPSDO 1PPS as refclock → host time to ~1–10 µs;
++- the residual constant bias (radiod pipeline latency, 1–2 × 20 ms blocks,
++  plus USB buffering) is calibrated once with `--tau-bias` against a sounder
++  of known location;
++- proper removal via radiod RTP timestamps + GPS time from the status stream
++  is planned for the GNU Radio phase (stream tags on retune boundaries).
++
++## Implementation facts (verified against ka9q-radio sources, 2026-07)
++
++- radiod **creates channels dynamically** when a `tune` command addresses an
++  unknown SSRC (`data =` must be set in `[global]`). Static config sections
++  force SSRC = freq/kHz and do not accept a manual SSRC — hence no static
++  chirp section in `radiod@chirp.conf`.
++- Default channel encoding is **s16be**; V0.3 pins `f32le` everywhere.
++- The `iq` preset defaults to ±5 kHz filter edges; the tracker must override
++  with `--low/--high` (±46 kHz for a 96 kHz channel) or 90 % of the channel
++  is silently discarded.
++- `pcmrecord --stdout --raw --ssrc N group` handles all RTP reassembly and
++  emits headerless f32le stereo (I = left, Q = right) — the Phase 1 capture
++  path contains zero RTP code. The GNU Radio block parses RTP natively
++  (RFC 3550) with zero-fill on sequence gaps.
++
++## Files
++
++| Path | Role |
++|------|------|
++| `software/ka9q-backend/radiod@chirp.conf` | radiod configuration (RX888 @ 64.8 Msps) |
++| `software/ka9q-backend/chirp_tracker.py` | Mode B sweep tracker (tune + pcmrecord) |
++| `software/ka9q-backend/dechirp_sweep.py` | Mode B segments → ionogram |
++| `software/ka9q-backend/test_dechirp_sim.py` | Offline validation of the Mode B chain |
++| `software/gr-chirpsounder/python/ka9q_iq_source.py` | GNU Radio source block |
++
++## Deprecated in V0.3
++
++The V0.2 receiver options remain *possible* (any SDR feeding
++`dechirp_basic.py` still works) but are no longer the reference platform:
++
++- ANTSDR E200 — no longer required; USRP-class capture path dropped.
++- Hermes-Lite 2 — superseded by RX888 direct sampling.
++- RTL-SDR + upconverter — insufficient dynamic range for a network node.
+diff -ruN chirpsounder_repo-main/software/examples/dechirp_basic.py chirpsounder_repo-v0.3/software/examples/dechirp_basic.py
+--- chirpsounder_repo-main/software/examples/dechirp_basic.py	2026-04-29 21:58:35.000000000 +0000
++++ chirpsounder_repo-v0.3/software/examples/dechirp_basic.py	2026-07-02 08:45:49.897034861 +0000
+@@ -132,7 +132,11 @@
+     echo_delay = 200e3 * 2 / 3e8  # 200 km virtual range
+     echo_samples = int(echo_delay * fs)
+     echo = np.roll(direct, echo_samples) * 0.1
+-    iq = direct + echo + 0.01 * (np.random.randn(len(direct)) + 1j * np.random.randn(len(direct)))
++    iq = (
++        direct
++        + echo
++        + 0.01 * (np.random.randn(len(direct)) + 1j * np.random.randn(len(direct)))
++    )
+ 
+     dechirped = dechirp(iq, sf, bw, fs)
+     rd_map = range_doppler_map(dechirped, sf, fs)
+diff -ruN chirpsounder_repo-main/software/gr-chirpsounder/README.md chirpsounder_repo-v0.3/software/gr-chirpsounder/README.md
+--- chirpsounder_repo-main/software/gr-chirpsounder/README.md	2026-04-29 21:58:35.000000000 +0000
++++ chirpsounder_repo-v0.3/software/gr-chirpsounder/README.md	2026-07-02 08:45:06.456959185 +0000
+@@ -7,11 +7,16 @@
+ 
+ ## Status
+ 
+-🚧 **Planned, not yet implemented.** This directory currently contains design
+-notes only. Implementation begins in Phase 1 of the project (RX-first approach).
++🚧 **In progress since V0.3.** First block implemented:
++[`python/ka9q_iq_source.py`](python/ka9q_iq_source.py), a native RTP
++multicast source for [ka9q-radio](https://github.com/ka9q/ka9q-radio)
++`radiod` channels (complex64 out; f32le/s16le/s16be payloads; SSRC
++filtering; zero-fill on RTP sequence gaps). Usable today as a GRC
++"Embedded Python Block". Remaining blocks follow in Phase 2.
+ 
+-## Planned blocks
++## Blocks
+ 
++- `ka9q_iq_source` — radiod multicast IQ source — **implemented (V0.3)**
+ - `dechirp` — stretch processing matched filter
+ - `range_fft` — fast-time FFT for range bins
+ - `direct_leakage_remover` — median subtraction across slow-time
+@@ -21,12 +26,18 @@
+ 
+ ## Planned flowgraphs
+ 
+-- `flowgraphs/rx_antsdr_passive.grc` — passive RX from ANTSDR E200
+-- `flowgraphs/rx_hermeslite_passive.grc` — passive RX from Hermes-Lite 2
+-- `flowgraphs/rx_rtlsdr_basic.grc` — minimal RTL-SDR + upconverter
++- `flowgraphs/rx_ka9q_fixed.grc` — fixed-channel RX (30 m SX1262 sounder,
++  Mode A of [`docs/architecture/rx-ka9q.md`](../../docs/architecture/rx-ka9q.md))
++- `flowgraphs/rx_ka9q_swept.grc` — stepped-LO tracking RX for opportunity
++  illuminators (Mode B; sweep control ported from
++  [`software/ka9q-backend/chirp_tracker.py`](../ka9q-backend/chirp_tracker.py))
+ - `flowgraphs/calibration_self_test.grc` — internal loopback for pipeline
+   validation
+ 
++The V0.2 flowgraph targets (ANTSDR E200, Hermes-Lite 2, RTL-SDR) are
++dropped; any SDR remains usable offline via
++[`software/examples/dechirp_basic.py`](../examples/dechirp_basic.py).
++
+ ## Reference implementation
+ 
+ A standalone Python reference implementation of the dechirp algorithm is
+diff -ruN chirpsounder_repo-main/software/gr-chirpsounder/python/ka9q_iq_source.py chirpsounder_repo-v0.3/software/gr-chirpsounder/python/ka9q_iq_source.py
+--- chirpsounder_repo-main/software/gr-chirpsounder/python/ka9q_iq_source.py	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/software/gr-chirpsounder/python/ka9q_iq_source.py	2026-07-02 08:45:30.134651506 +0000
+@@ -0,0 +1,143 @@
++#!/usr/bin/env python3
++"""
++ka9q_iq_source -- GNU Radio source block for ka9q-radio multicast IQ.
++
++Drop-in replacement for the osmocom/UHD/soapy source planned in V0.2
++for gr-chirpsounder. Joins the radiod data multicast group, parses
++RTP (RFC 3550 fixed header + CSRC/extension skip), filters on SSRC and
++emits complex64.
++
++radiod payload formats supported (set per channel or via `tune -e`):
++    f32le : interleaved little-endian float32 I,Q   (recommended)
++    s16le : interleaved little-endian int16   I,Q
++    s16be : interleaved big-endian    int16   I,Q   (radiod default!)
++
++Notes
++-----
++* radiod payload types are allocated dynamically (PT 77..127); the
++  authoritative PT->encoding mapping is announced on the status stream.
++  For a single-purpose chirp channel it is simpler and robust to pin
++  the encoding on the radiod side (encoding = f32le or tune -e f32le)
++  and configure the same value here.
++* Sequence-number gaps are zero-filled so downstream timing (sample
++  counting) stays consistent.
++* Retunes commanded with `tune` do not interrupt the stream; the block
++  keeps producing. Tag-based center-frequency annotation from the
++  status stream is a Phase 2 TODO (see docs/architecture/rx-ka9q.md).
++
++Usage in GRC: add an "Embedded Python Block" and paste this class, or
++install as a module and instantiate:
++
++    src = ka9q_iq_source(group="chirp-iq.local", port=5004,
++                         ssrc=5001, encoding="f32le")
++
++Added in V0.3 (ka9q-radio receiver backend).
++License: GPL-3.0-or-later
++"""
++
++import socket
++import struct
++
++import numpy as np
++from gnuradio import gr
++
++
++class ka9q_iq_source(gr.sync_block):
++    def __init__(
++        self,
++        group="chirp-iq.local",
++        port=5004,
++        ssrc=5001,
++        encoding="f32le",
++        iface_ip="0.0.0.0",
++    ):
++        gr.sync_block.__init__(
++            self, name="ka9q_iq_source", in_sig=None, out_sig=[np.complex64]
++        )
++        self.ssrc = int(ssrc)
++        self.encoding = encoding
++        if encoding == "f32le":
++            self._dtype, self._scale = np.dtype("<f4"), 1.0
++        elif encoding == "s16le":
++            self._dtype, self._scale = np.dtype("<i2"), 1.0 / 32768.0
++        elif encoding == "s16be":
++            self._dtype, self._scale = np.dtype(">i2"), 1.0 / 32768.0
++        else:
++            raise ValueError("encoding must be f32le, s16le or s16be")
++
++        # resolve group (mDNS .local via avahi, or literal IP)
++        gaddr = socket.getaddrinfo(group, port, socket.AF_INET, socket.SOCK_DGRAM)[0][
++            4
++        ][0]
++        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
++        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
++        s.bind(("", port))
++        mreq = struct.pack("4s4s", socket.inet_aton(gaddr), socket.inet_aton(iface_ip))
++        s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
++        s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4 << 20)
++        s.settimeout(2.0)
++        self.sock = s
++
++        self._residual = np.zeros(0, dtype=np.complex64)
++        self._last_seq = None
++        self._drops = 0
++
++    # ---- RTP ---------------------------------------------------------
++    def _parse_rtp(self, pkt):
++        if len(pkt) < 12:
++            return None
++        b0, b1, seq, ts, ssrc = struct.unpack("!BBHII", pkt[:12])
++        if (b0 >> 6) != 2:  # RTP version
++            return None
++        if ssrc != self.ssrc:
++            return None
++        off = 12 + 4 * (b0 & 0x0F)  # skip CSRC list
++        if b0 & 0x10:  # header extension
++            if len(pkt) < off + 4:
++                return None
++            _, xlen = struct.unpack("!HH", pkt[off : off + 4])
++            off += 4 + 4 * xlen
++        if b0 & 0x20:  # padding
++            pkt = pkt[: len(pkt) - pkt[-1]]
++        return seq, pkt[off:]
++
++    def _payload_to_iq(self, payload):
++        a = np.frombuffer(payload, dtype=self._dtype)
++        a = a[: (len(a) // 2) * 2].astype(np.float32) * self._scale
++        return (a[0::2] + 1j * a[1::2]).astype(np.complex64)
++
++    # ---- GNU Radio ----------------------------------------------------
++    def work(self, input_items, output_items):
++        out = output_items[0]
++        n_out = 0
++        # serve residual first
++        if len(self._residual):
++            n = min(len(out), len(self._residual))
++            out[:n] = self._residual[:n]
++            self._residual = self._residual[n:]
++            n_out = n
++        while n_out < len(out):
++            try:
++                pkt = self.sock.recv(9000)
++            except socket.timeout:
++                break  # let the scheduler breathe
++            r = self._parse_rtp(pkt)
++            if r is None:
++                continue
++            seq, payload = r
++            iq = self._payload_to_iq(payload)
++            if self._last_seq is not None:
++                gap = (seq - self._last_seq - 1) & 0xFFFF
++                if 0 < gap < 100:  # zero-fill small gaps
++                    iq = np.concatenate([np.zeros(gap * len(iq), np.complex64), iq])
++                    self._drops += gap
++            self._last_seq = seq
++            n = min(len(out) - n_out, len(iq))
++            out[n_out : n_out + n] = iq[:n]
++            self._residual = iq[n:]
++            n_out += n
++        return n_out
++
++    def stop(self):
++        self.sock.close()
++        return True
+diff -ruN chirpsounder_repo-main/software/ka9q-backend/README.md chirpsounder_repo-v0.3/software/ka9q-backend/README.md
+--- chirpsounder_repo-main/software/ka9q-backend/README.md	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/software/ka9q-backend/README.md	2026-07-02 08:44:09.658455486 +0000
+@@ -0,0 +1,44 @@
++# ka9q-backend
++
++Receiver backend on the wsprdaemon reference hardware (GPSDO + RX888 MkII +
++Beelink miniPC, Ubuntu Server 24.04 LTS) running
++[ka9q-radio](https://github.com/ka9q/ka9q-radio). Introduced in **V0.3**,
++replacing the ANTSDR E200 / Hermes-Lite 2 / RTL-SDR options of V0.2.
++
++Full design rationale and the stepped-LO tracking theory:
++[`docs/architecture/rx-ka9q.md`](../../docs/architecture/rx-ka9q.md).
++
++## Contents
++
++| File | Role |
++|------|------|
++| `radiod@chirp.conf` | radiod config: RX888 @ 64.8 Msps, GPSDO reference |
++| `chirp_tracker.py` | Sweep tracker for opportunity illuminators (Mode B) |
++| `dechirp_sweep.py` | Dwell segments → oblique ionogram (PNG) |
++| `test_dechirp_sim.py` | Offline validation — run it before anything else |
++
++## Quick start
++
++```sh
++# 1. ka9q-radio (build per its INSTALL.md)
++git clone https://github.com/ka9q/ka9q-radio && cd ka9q-radio
++make -j && sudo make install
++sudo cp radiod@chirp.conf /etc/radio/
++sudo systemctl enable --now radiod@chirp
++
++# 2. time discipline (mandatory — see rx-ka9q.md)
++sudo apt install gpsd chrony
++
++# 3. validate the DSP chain offline
++python3 test_dechirp_sim.py     # must print PASS
++
++# 4. track a known sounder (example: 100 kHz/s, every 15 min, offset 5 s)
++./chirp_tracker.py --f-start 2e6 --f-stop 30e6 --rate 100e3 \
++    --period 900 --offset 5.0 --outdir /dev/shm/chirp --sweeps 1
++./dechirp_sweep.py --indir /dev/shm/chirp --out ionogram.png
++```
++
++For the project's own SX1262 sounder on 30 m (Mode A), no tracker is needed:
++create one fixed IQ channel with `tune` and feed
++`software/examples/dechirp_basic.py` or the `gr-chirpsounder`
++`ka9q_iq_source` block.
+diff -ruN chirpsounder_repo-main/software/ka9q-backend/chirp_tracker.py chirpsounder_repo-v0.3/software/ka9q-backend/chirp_tracker.py
+--- chirpsounder_repo-main/software/ka9q-backend/chirp_tracker.py	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/software/ka9q-backend/chirp_tracker.py	2026-07-02 08:45:30.132516306 +0000
+@@ -0,0 +1,240 @@
++#!/usr/bin/env python3
++"""
++chirp_tracker.py -- Phase 1 PoC capture front end for the ka9q-radio backend.
++
++Replaces the direct-SDR capture (ANTSDR E200 / Hermes-Lite 2 / RTL-SDR) of
++V0.2 with a stepped-LO tracking receiver on top of radiod
++(RX888 MkII @ 64.8 Msps, GPSDO-disciplined).
++
++Principle
++---------
++A linear chirp sounder sweeps f_start..f_stop at rate R (typ. 100 kHz/s,
++GPS-synchronized to a repeating schedule). We follow it with ONE radiod
++IQ channel (bandwidth = samprate, default 96 kHz):
++
++  * the channel is retuned every `step`/R seconds by `step` Hz using the
++    ka9q-radio `tune` utility (dynamic channel, SSRC fixed);
++  * IQ samples are ingested continuously via
++        pcmrecord --stdout --raw --ssrc SSRC chirp-iq.local
++    (pcmrecord handles RTP reassembly; --raw gives headerless f32le
++    stereo = interleaved I,Q float32);
++  * each dwell is written as one .npz segment with its center frequency
++    and nominal start time, ready for dechirp.py.
++
++Timing model (PoC): absolute time of sample n is approximated as
++t_capture_start + n/fs. The unknown constant pipeline latency of
++radiod (~1-2 block times, 20-40 ms) plus host clock error appears as a
++constant group-delay bias -> a constant virtual-height offset on the
++ionogram. Discipline the host clock with gpsd+chrony (PPS from the
++GPSDO) to keep the error < 1 ms (300 km one-way -> after calibration
++against a known-range sounder the residual is the chrony jitter,
++~10 us with PPS). Phase 2 (gr-chirpsounder) replaces this with
++RTP-timestamp/GPS-time bookkeeping from the radiod status stream.
++
++Usage example (a 100 kHz/s sounder starting at :00 +05 s of every
++15 min, 2->30 MHz):
++
++  ./chirp_tracker.py --radio hf.local --data chirp-iq.local --ssrc 5001 \
++      --f-start 2e6 --f-stop 30e6 --rate 100e3 \
++      --period 900 --offset 5.0 --outdir /dev/shm/chirp
++
++Requires: ka9q-radio installed (tune, pcmrecord in PATH), Python 3.10+,
++numpy.
++
++Added in V0.3 (ka9q-radio receiver backend).
++License: GPL-3.0-or-later
++"""
++
++import argparse
++import os
++import subprocess
++import sys
++import time
++from datetime import datetime, timezone
++
++import numpy as np
++
++BYTES_PER_FRAME = 8  # f32le stereo: 4 bytes I + 4 bytes Q
++
++
++def next_sweep_start(period: float, offset: float, now: float) -> float:
++    """Next UTC epoch time the sounder passes f_start."""
++    k = int(now // period) + 1
++    t = k * period + offset
++    # handle offset making the previous slot still in the future
++    while t - period > now:
++        t -= period
++    return t
++
++
++def tune_cmd(args, freq_hz: float) -> list[str]:
++    half = args.samprate / 2.0
++    guard = args.samprate * 0.04  # stay off the filter skirts
++    return [
++        args.tune_bin,
++        "--radio",
++        args.radio,
++        "--ssrc",
++        str(args.ssrc),
++        "--mode",
++        "iq",
++        "--samprate",
++        str(int(args.samprate)),
++        "--encoding",
++        "f32le",
++        "--low",
++        str(-(half - guard)),
++        "--high",
++        str(+(half - guard)),
++        "--destination",
++        args.data,
++        "--frequency",
++        f"{freq_hz:.0f}",
++    ]
++
++
++def retune(args, freq_hz: float) -> None:
++    subprocess.run(tune_cmd(args, freq_hz), check=True, capture_output=True, timeout=5)
++
++
++def read_exact(pipe, nbytes: int) -> bytes:
++    buf = bytearray()
++    while len(buf) < nbytes:
++        chunk = pipe.read(nbytes - len(buf))
++        if not chunk:
++            raise EOFError("pcmrecord stream ended")
++        buf.extend(chunk)
++    return bytes(buf)
++
++
++def main() -> int:
++    ap = argparse.ArgumentParser(
++        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
++    )
++    ap.add_argument(
++        "--radio",
++        default="hf.local",
++        help="radiod status/command group (default hf.local)",
++    )
++    ap.add_argument(
++        "--data",
++        default="chirp-iq.local",
++        help="multicast data group for the chirp IQ channel",
++    )
++    ap.add_argument("--ssrc", type=int, default=5001)
++    ap.add_argument(
++        "--samprate",
++        type=float,
++        default=96e3,
++        help="channel sample rate / bandwidth, Hz (default 96k)",
++    )
++    ap.add_argument("--f-start", type=float, required=True)
++    ap.add_argument("--f-stop", type=float, required=True)
++    ap.add_argument(
++        "--rate", type=float, default=100e3, help="chirp rate, Hz/s (default 100k)"
++    )
++    ap.add_argument(
++        "--period", type=float, default=900.0, help="sounder repetition period, s"
++    )
++    ap.add_argument(
++        "--offset",
++        type=float,
++        default=0.0,
++        help="sweep start offset within the period, s (UTC)",
++    )
++    ap.add_argument(
++        "--step", type=float, default=None, help="retune step, Hz (default samprate/2)"
++    )
++    ap.add_argument("--outdir", default="/dev/shm/chirp")
++    ap.add_argument(
++        "--sweeps",
++        type=int,
++        default=1,
++        help="number of sweeps to capture (0 = forever)",
++    )
++    ap.add_argument("--tune-bin", default="tune")
++    ap.add_argument("--pcmrecord-bin", default="pcmrecord")
++    args = ap.parse_args()
++
++    if args.step is None:
++        args.step = args.samprate / 2.0  # 48 kHz steps for a 96 kHz channel
++    dwell = args.step / args.rate  # s per segment (0.48 s default)
++    n_steps = int(np.ceil((args.f_stop - args.f_start) / args.step))
++    fs = args.samprate
++    n_dwell = int(round(dwell * fs))
++
++    os.makedirs(args.outdir, exist_ok=True)
++    print(
++        f"Sweep {args.f_start/1e6:.3f}->{args.f_stop/1e6:.3f} MHz @ "
++        f"{args.rate/1e3:.0f} kHz/s: {n_steps} steps of {args.step/1e3:.0f} kHz, "
++        f"dwell {dwell*1e3:.0f} ms ({n_dwell} samples)",
++        flush=True,
++    )
++
++    # Park the channel (creates it dynamically) and start the ingest pipe.
++    park = args.f_start + args.step / 2.0
++    retune(args, park)
++    time.sleep(0.5)
++    rec = subprocess.Popen(
++        [args.pcmrecord_bin, "--stdout", "--raw", "--ssrc", str(args.ssrc), args.data],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.DEVNULL,
++        bufsize=0,
++    )
++    # flush whatever accumulated while parking
++    assert rec.stdout is not None
++
++    sweep_count = 0
++    try:
++        while args.sweeps == 0 or sweep_count < args.sweeps:
++            now = time.time()
++            t0 = next_sweep_start(args.period, args.offset, now)
++            print(
++                f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] "
++                f"next sweep at UTC epoch {t0:.3f} (in {t0-now:.1f} s)",
++                flush=True,
++            )
++
++            for k in range(n_steps):
++                fc = args.f_start + (k + 0.5) * args.step  # dwell center freq
++                # chirp reaches the lower edge of this dwell at:
++                t_enter = t0 + k * dwell
++                # retune slightly early (radiod retune ~1 block, 20 ms)
++                t_retune = t_enter - 0.05
++                dt = t_retune - time.time()
++                if dt > 0:
++                    # drain the pipe while waiting so pcmrecord never blocks
++                    drain_frames = int(dt * fs)
++                    if drain_frames > 0:
++                        read_exact(rec.stdout, drain_frames * BYTES_PER_FRAME)
++                retune(args, fc)
++                # drain the retune guard interval, then capture the dwell
++                read_exact(rec.stdout, int(0.05 * fs) * BYTES_PER_FRAME)
++                t_seg = time.time()  # nominal start-of-dwell wallclock
++                raw = read_exact(rec.stdout, n_dwell * BYTES_PER_FRAME)
++                iq = np.frombuffer(raw, dtype="<f4").reshape(-1, 2)
++                z = (iq[:, 0] + 1j * iq[:, 1]).astype(np.complex64)
++                fn = os.path.join(
++                    args.outdir, f"seg_{sweep_count:03d}_{k:04d}_{fc/1e3:.0f}kHz.npz"
++                )
++                np.savez(
++                    fn,
++                    z=z,
++                    fc=fc,
++                    fs=fs,
++                    t_start=t_seg,
++                    t0_sweep=t0,
++                    rate=args.rate,
++                    f_start=args.f_start,
++                )
++            sweep_count += 1
++            print(f"sweep {sweep_count} done -> {args.outdir}", flush=True)
++    except KeyboardInterrupt:
++        pass
++    finally:
++        rec.terminate()
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff -ruN chirpsounder_repo-main/software/ka9q-backend/dechirp_sweep.py chirpsounder_repo-v0.3/software/ka9q-backend/dechirp_sweep.py
+--- chirpsounder_repo-main/software/ka9q-backend/dechirp_sweep.py	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/software/ka9q-backend/dechirp_sweep.py	2026-07-02 08:45:30.132720110 +0000
+@@ -0,0 +1,145 @@
++#!/usr/bin/env python3
++"""
++dechirp_sweep.py -- Phase 1 PoC processing: segments -> oblique ionogram.
++
++Each segment produced by chirp_tracker.py contains the complex baseband
++of one dwell, centered on fc, while the sounder chirp sweeps through the
++channel. We multiply by the conjugate of the synthetic zero-delay chirp
++(referenced to the GPS-scheduled sweep start t0) and take an STFT.
++
++After dechirp, a propagation path with group delay tau appears as a tone
++at f_tone = -R * tau  (it lags the reference). The STFT therefore maps
++directly to the ionogram:
++
++    time axis  -> sounder frequency:  f = f_start + R * (t - t0)
++    STFT freq  -> group delay:        tau = -f_tone / R
++    delay res  -> 1 / (R * T_window)  e.g. 0.1 s window @ 100 kHz/s
++                                            -> 100 us -> 15 km one-way
++
++Constant timing bias (radiod pipeline latency + host clock offset)
++shifts all tau by the same amount; calibrate with --tau-bias.
++
++Usage:
++    ./dechirp_sweep.py --indir /dev/shm/chirp --sweep 0 --out ionogram.png
++
++Added in V0.3 (ka9q-radio receiver backend).
++License: GPL-3.0-or-later
++"""
++
++import argparse
++import glob
++import os
++import re
++import sys
++
++import numpy as np
++
++
++def dechirp_segment(
++    z, fs, fc, t_start, t0, rate, f_start, win_s=0.1, tau_max=8e-3, tau_bias=0.0
++):
++    """Return (freqs_MHz, taus_ms, S_dB) tiles for one dwell."""
++    n = len(z)
++    t = t_start + np.arange(n) / fs  # wallclock of each sample
++    u = t - t0  # time since sweep start
++    # zero-delay reference at baseband of this channel:
++    #   phi(t) = 2*pi * ( f_start*u + R*u^2/2 - fc*u )
++    phi = 2 * np.pi * ((f_start - fc) * u + 0.5 * rate * u**2)
++    y = z * np.exp(-1j * phi)
++
++    nw = int(round(win_s * fs))
++    nseg = n // nw
++    if nseg == 0:
++        return None
++    y = y[: nseg * nw].reshape(nseg, nw)
++    w = np.hanning(nw)
++    Y = np.fft.fftshift(np.fft.fft(y * w, axis=1), axes=1)
++    fax = np.fft.fftshift(np.fft.fftfreq(nw, 1 / fs))
++    tau = -fax / rate - tau_bias  # s
++    sel = (tau >= 0) & (tau <= tau_max)
++    S = 20 * np.log10(np.abs(Y[:, sel]) + 1e-12)
++    # sounder frequency at the center of each STFT window
++    tw = t_start + (np.arange(nseg) + 0.5) * nw / fs
++    fsound = f_start + rate * (tw - t0)
++    return fsound / 1e6, tau[sel] * 1e3, S
++
++
++def main() -> int:
++    ap = argparse.ArgumentParser(
++        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
++    )
++    ap.add_argument("--indir", default="/dev/shm/chirp")
++    ap.add_argument("--sweep", type=int, default=0)
++    ap.add_argument(
++        "--win", type=float, default=0.1, help="STFT window, s (delay res = 1/(R*win))"
++    )
++    ap.add_argument("--tau-max", type=float, default=8e-3)
++    ap.add_argument(
++        "--tau-bias",
++        type=float,
++        default=0.0,
++        help="calibration bias to subtract from delay, s",
++    )
++    ap.add_argument("--out", default="ionogram.png")
++    args = ap.parse_args()
++
++    files = sorted(
++        glob.glob(os.path.join(args.indir, f"seg_{args.sweep:03d}_*.npz")),
++        key=lambda p: int(re.search(r"_(\d{4})_", p).group(1)),
++    )
++    if not files:
++        print("no segments found", file=sys.stderr)
++        return 1
++
++    cols_f, cols_S, taus = [], [], None
++    for fn in files:
++        d = np.load(fn)
++        r = dechirp_segment(
++            d["z"],
++            float(d["fs"]),
++            float(d["fc"]),
++            float(d["t_start"]),
++            float(d["t0_sweep"]),
++            float(d["rate"]),
++            float(d["f_start"]),
++            win_s=args.win,
++            tau_max=args.tau_max,
++            tau_bias=args.tau_bias,
++        )
++        if r is None:
++            continue
++        f, taus, S = r
++        cols_f.append(f)
++        cols_S.append(S)
++
++    F = np.concatenate(cols_f)
++    S = np.vstack(cols_S)  # [freq, tau]
++    order = np.argsort(F)
++    F, S = F[order], S[order]
++
++    import matplotlib
++
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++
++    fig, ax = plt.subplots(figsize=(12, 6))
++    vmax = np.percentile(S, 99.5)
++    m = ax.pcolormesh(
++        F, taus, S.T, vmin=vmax - 40, vmax=vmax, shading="auto", cmap="inferno"
++    )
++    ax.set_xlabel("Sounder frequency (MHz)")
++    ax.set_ylabel("Group delay (ms)")
++    ax2 = ax.secondary_yaxis(
++        "right", functions=(lambda t: t * 149.9, lambda h: h / 149.9)
++    )
++    ax2.set_ylabel("One-way virtual range (km)")
++    fig.colorbar(m, ax=ax, label="dB (uncal)")
++    ax.set_title("Chirpsounder PoC — ka9q-radio / RX888 MkII backend")
++    fig.tight_layout()
++    fig.savefig(args.out, dpi=130)
++    print(f"wrote {args.out}: {len(F)} freq bins x {len(taus)} delay bins")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff -ruN chirpsounder_repo-main/software/ka9q-backend/radiod@chirp.conf chirpsounder_repo-v0.3/software/ka9q-backend/radiod@chirp.conf
+--- chirpsounder_repo-main/software/ka9q-backend/radiod@chirp.conf	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/software/ka9q-backend/radiod@chirp.conf	2026-07-02 08:42:37.399948603 +0000
+@@ -0,0 +1,53 @@
++# radiod@chirp.conf
++# ka9q-radio configuration for the chirpsounder receiver
++# Hardware: RX888 MkII + GPSDO (wsprdaemon architecture), Beelink miniPC, Ubuntu 24.04 LTS
++# Derived from config/examples/radiod@rx888-wsprdaemon.conf
++#
++# Install:  sudo cp radiod@chirp.conf /etc/radio/
++#           sudo systemctl enable --now radiod@chirp
++#
++# The chirp channel itself is created and swept DYNAMICALLY by
++# phase0/chirp_tracker.py using the 'tune' utility, so no static
++# [CHIRP] section is strictly required. The section below only serves
++# as a parked prototype and for manual testing with 'control'.
++
++[global]
++hardware = rx888
++status = hf.local          # status/command multicast group (used by tune/control)
++data = hf-pcm.local        # default data group for ad-hoc sessions
++samprate = 12k             # default; the chirp channel overrides this
++mode = usb
++ttl = 0                    # keep multicast on-host (wsprdaemon practice; no IGMP-aware switch needed)
++# fft-threads = 2          # raise if the Beelink CPU allows; helps the filterbank
++# blocktime = 20           # ms; 20 ms => retune granularity and settling ~1-2 blocks
++
++[rx888]
++device = "rx888"
++description = "RX888 MkII chirpsounder - <CALLSIGN> <antenna>"
++samprate = 64m800000       # 64.8 Msps: full HF coverage, kinder to the RX888 and the CPU
++gain = 20                  # dB, AD8370 VGA; adjust so band noise raises the noise floor ~10 dB
++# calibrate = 0            # leave 0: the GPSDO disciplines the 27 MHz clock externally
++# dither = no
++# rand = no
++# att = 0                  # PE4312 attenuator if strong local BC stations
++
++# ------------------------------------------------------------------
++# NO static chirp channel section.
++# radiod creates the channel DYNAMICALLY when chirp_tracker.py sends the
++# first command via 'tune' (this requires 'data =' to be set in [global],
++# which it is above). Static sections would force SSRC = freq/1000 and
++# cannot carry a manual SSRC in current ka9q-radio.
++#
++# The tracker creates/retunes the channel with:
++#   tune -r hf.local -s 5001 -m iq -R 96k -e f32le \
++#        -L -46k -H +46k -D chirp-iq.local -f <freq>
++#
++# NOTE: the 'iq' preset defaults to low/high = +/-5 kHz, so the tracker
++# MUST override the filter edges (-L/-H) to use the full 96 kHz channel.
++# ------------------------------------------------------------------
++
++# ------------------------------------------------------------------
++# Optional: keep your WSPR channels in the same radiod instance;
++# the incremental filterbank cost of extra channels is small. Copy the
++# [WSPR] section from radiod@rx888-wsprdaemon.conf here if desired.
++# ------------------------------------------------------------------
+diff -ruN chirpsounder_repo-main/software/ka9q-backend/test_dechirp_sim.py chirpsounder_repo-v0.3/software/ka9q-backend/test_dechirp_sim.py
+--- chirpsounder_repo-main/software/ka9q-backend/test_dechirp_sim.py	1970-01-01 00:00:00.000000000 +0000
++++ chirpsounder_repo-v0.3/software/ka9q-backend/test_dechirp_sim.py	2026-07-02 08:43:00.755494660 +0000
+@@ -0,0 +1,65 @@
++#!/usr/bin/env python3
++"""
++test_dechirp_sim.py -- validate the stepped-LO dechirp chain offline.
++
++Simulates what radiod's IQ channel would deliver during 6 dwells while a
++100 kHz/s sounder sweeps through, with a two-path ionosphere:
++   path 1: tau = 2.0 ms (one-way virtual range ~300 km), 0 dB
++   path 2: tau = 3.4 ms (~510 km), -10 dB
++plus noise, then runs dechirp_segment() and checks the recovered delays.
++
++Added in V0.3 (ka9q-radio receiver backend).
++License: GPL-3.0-or-later
++"""
++
++import numpy as np
++from dechirp_sweep import dechirp_segment
++
++rng = np.random.default_rng(1)
++
++fs = 96e3
++rate = 100e3
++f_start = 8e6
++step = 48e3
++dwell = step / rate  # 0.48 s
++n = int(dwell * fs)
++t0 = 1000.0  # sweep start epoch (arbitrary)
++paths = [(2.0e-3, 1.0), (3.4e-3, 0.316)]
++
++segs = []
++for k in range(6):
++    fc = f_start + (k + 0.5) * step
++    t_start = t0 + k * dwell
++    t = t_start + np.arange(n) / fs
++    z = np.zeros(n, dtype=np.complex128)
++    for tau, a in paths:
++        u = t - tau - t0  # emission time since sweep start
++        frf_phase = f_start * u + 0.5 * rate * u**2  # RF phase/(2pi) at emission
++        z += a * np.exp(2j * np.pi * (frf_phase - fc * t))
++    z += (rng.normal(size=n) + 1j * rng.normal(size=n)) * 0.05
++    segs.append((z.astype(np.complex64), fc, t_start))
++
++ok = True
++for z, fc, t_start in segs:
++    f_MHz, tau_ms, S = dechirp_segment(
++        z, fs, fc, t_start, t0, rate, f_start, win_s=0.12, tau_max=6e-3
++    )
++    prof = S.mean(axis=0)
++    # find the two strongest local peaks
++    idx = np.argsort(prof)[::-1]
++    found = []
++    for i in idx:
++        if all(abs(tau_ms[i] - f) > 0.3 for f in found):
++            found.append(tau_ms[i])
++        if len(found) == 2:
++            break
++    found.sort()
++    err = [abs(found[j] - [2.0, 3.4][j]) for j in range(2)]
++    print(
++        f"dwell fc={fc/1e6:.3f} MHz  f_sound={f_MHz[0]:.3f}-{f_MHz[-1]:.3f} "
++        f"MHz  peaks at {found[0]:.3f}, {found[1]:.3f} ms  "
++        f"(err {err[0]*1e3:.1f}, {err[1]*1e3:.1f} us)"
++    )
++    ok &= max(err) < 0.05  # 50 us tolerance
++print("PASS" if ok else "FAIL")
++raise SystemExit(0 if ok else 1)

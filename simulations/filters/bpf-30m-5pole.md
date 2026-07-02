@@ -19,7 +19,7 @@
 From standard Chebyshev tables (Zverev, Matthaei-Young-Jones), the
 g-coefficients for a 5-pole 0.1 dB ripple filter are:
 
-```
+```text
 g0 = 1.0000
 g1 = 1.1468
 g2 = 1.3712

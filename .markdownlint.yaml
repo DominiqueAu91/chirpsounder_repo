@@ -1,0 +1,14 @@
+# markdownlint configuration — codifies the project documentation style (V0.3)
+# Reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Project prose wraps at ~90-95 columns; allow 100. Tables (BoM, RF budget)
+# and code blocks (ASCII diagrams, shell examples) are exempt.
+MD013:
+  line_length: 100
+  code_blocks: false
+  tables: false
+
+# Keep-a-Changelog repeats section headings (### BoM impact) across releases;
+# only forbid duplicates among sibling headings.
+MD024:
+  siblings_only: true
