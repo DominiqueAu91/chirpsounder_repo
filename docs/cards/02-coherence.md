@@ -16,7 +16,7 @@ stability:
 
 ## Schematic (V0.2)
 
-```
+```text
 GPSDO 10 MHz ref in (sine, 0 dBm)
         |
         v J1 SMA panel

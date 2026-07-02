@@ -59,6 +59,15 @@ Rationale, theory and implementation details:
 - `software/examples/dechirp_basic.py` reformatted with black — the V0.2
   file did not pass the repository's own `python-lint` CI job. All V0.3
   Python files pass `black --check` and `ruff check`.
+- `markdown-lint` CI job made green for the first time (V0.2 carried 72
+  violations). Added `.markdownlint.yaml` codifying the project style
+  (100-column prose, tables and code blocks exempt, Keep-a-Changelog
+  sibling headings allowed); tagged all 20 fenced code blocks with a
+  language (`text`/`sh`); fixed fence spacing in `budget.md` and
+  `lfm-theory.md` and one trailing space.
+- GitHub Actions bumped to Node 24-native majors (`checkout@v6`,
+  `setup-python@v6`, `markdownlint-cli2-action@v23`), clearing the
+  Node 20 deprecation warnings.
 
 ### BoM impact
 

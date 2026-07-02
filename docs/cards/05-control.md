@@ -45,7 +45,7 @@ soft real-time IHM and logging (Core 0).
 
 ## State machine
 
-```
+```text
    BOOT → init OLED, USB host, Si5351, ADF4351, SX1262
      │
      v

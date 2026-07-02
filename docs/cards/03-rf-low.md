@@ -11,7 +11,7 @@ then converts it down to 10 MHz on the 30m amateur band by mixing with a coheren
 
 ## Schematic (V0.2)
 
-```
+```text
 32 MHz sine (Card 2, sine-mode Si5351)
     |
    [resistive divider 1k/100Ω, V0.2 added]

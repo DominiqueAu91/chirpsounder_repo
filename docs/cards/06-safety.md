@@ -11,7 +11,7 @@ multiple protections at once.
 
 ## Schematic
 
-```
+```text
 Card 5 GP15 PA_ENABLE (software logic)
     │
     v

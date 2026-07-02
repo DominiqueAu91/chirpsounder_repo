@@ -4,7 +4,7 @@ V0.3 replaces the direct-SDR receivers of V0.2 (ANTSDR E200, Hermes-Lite 2,
 RTL-SDR + upconverter) with the **wsprdaemon reference hardware** running
 **ka9q-radio**:
 
-```
+```text
 HF antenna
    |
    v

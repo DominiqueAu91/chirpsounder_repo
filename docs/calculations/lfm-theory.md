@@ -5,7 +5,7 @@
 LFM = Linear Frequency Modulation. A coherent chirp signal whose instantaneous
 frequency increases (or decreases) linearly with time:
 
-```
+```text
 s(t) = exp(j π μ t²)        for 0 ≤ t < T_sym
 ```
 
@@ -13,7 +13,7 @@ with chirp rate `μ = BW / T_sym` (Hz/s).
 
 ## Key relations
 
-```
+```text
 T_sym  = 2^SF / BW                    symbol duration (s)
 μ      = BW / T_sym = BW² / 2^SF      chirp rate (Hz/s)
 PRF    = 1 / T_sym = BW / 2^SF        repetition frequency (Hz)
@@ -26,7 +26,8 @@ v_ua   = c · PRF / (4 · f_0)          unambiguous radial velocity (m/s)
 ```
 
 **Invariant** (independent of SF, BW choices):
-```
+
+```text
 R_ua × v_ua = c² / (8 · f_0)
 ```
 
@@ -53,7 +54,7 @@ SX1262_CHIRP repository.
 In stretch processing (used in our RX pipeline), the received chirp is mixed
 with the local reference chirp:
 
-```
+```text
 y(t) = r(t) · s*(t)   ≈ exp(j 2π μ τ t)    for delay τ
 ```
 

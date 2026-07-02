@@ -11,7 +11,7 @@ filtering for harmonic compliance, and (V0.2 addition) coaxial ESD surge protect
 
 ## Schematic (V0.2)
 
-```
+```text
 SMA J1 input ◄── 10 MHz, 0 dBm from Card 3
         |
         v
@@ -171,7 +171,7 @@ Two acceptable options:
 
 Mounting: between SO-239 panel connector and the external antenna feedline,
 ideally with the protector grounded to the equipment chassis AND to a separate
-station ground rod. The dual-grounding requirement is documented in 
+station ground rod. The dual-grounding requirement is documented in
 [`docs/operating/grounding.md`](../operating/grounding.md).
 
 **Note on insurance:** The IS-50UX-C0 documentation explicitly states the device

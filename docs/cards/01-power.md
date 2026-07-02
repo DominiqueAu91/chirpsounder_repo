@@ -13,7 +13,7 @@ Receives external 12 V supply (barrel jack) and distributes four regulated rails
 
 ## Schematic
 
-```
+```text
 DC IN 12V barrel ──[F1 polyfuse 3A]──[D1 1N5822]──┬──► 12V_PA bus (to Card 6 relay)
                                                   ├── [TVS SMBJ16CA]
                                                   ├── LED red "ON" + R 1k5

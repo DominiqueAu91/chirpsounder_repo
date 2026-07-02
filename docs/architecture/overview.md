@@ -37,7 +37,7 @@ Detailed card-level documents in [`docs/cards/`](../cards/).
 
 ## Block diagram
 
-```
+```text
 External GPSDO (10 MHz + PPS)
         |
         v
