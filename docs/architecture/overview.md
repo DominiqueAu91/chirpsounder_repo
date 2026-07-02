@@ -121,6 +121,15 @@ corrections following internal review. The major substitutions are:
 9. ADF4351 LO drive bumped to +8 dBm
 10. RF chain budget fully recomputed
 
+## Receiver architecture (V0.3)
+
+This document covers the **transmitter**. Since V0.3 the receive side runs on
+the wsprdaemon reference hardware (GPSDO + RX888 MkII + Beelink miniPC) with
+ka9q-radio's `radiod` as channelizer; the sounder RX coexists with WSPR
+decoding on the same box. Design principle 1 (coherence by construction)
+extends to RX through the GPSDO-disciplined RX888 sample clock. Full details:
+[`rx-ka9q.md`](rx-ka9q.md).
+
 ## Open questions
 
 - **Two-stage conversion?** The IF/LO ratio of 1.1% with single-stage conversion

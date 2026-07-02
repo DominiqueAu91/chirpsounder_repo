@@ -4,6 +4,71 @@ All notable design changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [V0.3] — 2026-07 — Receiver platform migration to ka9q-radio
+
+### Scope
+
+V0.3 is a **receiver-side** revision only. The transmitter design (six-card
+architecture, RF budget) is unchanged from V0.2. The direct-SDR receiver
+options of V0.2 (ANTSDR E200, Hermes-Lite 2, RTL-SDR + upconverter) are
+replaced as reference platform by the **wsprdaemon architecture**: GPSDO +
+RX888 MkII + Beelink miniPC (Ubuntu Server 24.04 LTS) running
+**ka9q-radio** (`radiod`).
+
+Rationale, theory and implementation details:
+[`docs/architecture/rx-ka9q.md`](architecture/rx-ka9q.md).
+
+### Architectural changes
+
+- **Capture model changed.** Behind `radiod` the raw 64.8 Msps stream is not
+  exposed; instead of wideband capture + offline dechirp, the receiver uses a
+  **stepped-LO tracking channel** (96 kHz IQ retuned by 48 kHz every 0.48 s
+  at 100 kHz/s) for opportunity sweepers, and a **single fixed channel** for
+  the project's own 30 m SX1262 sounder. Per-dwell stretch processing is
+  mathematically validated by `software/ka9q-backend/test_dechirp_sim.py`
+  (two-path synthetic ionosphere; delays recovered to within one FFT bin,
+  16.7 µs at the default 0.12 s window).
+- **Frequency vs time-of-day discipline made explicit.** The GPSDO
+  disciplines the RX888 sample clock only. Absolute group delay requires
+  host time discipline: gpsd + chrony on the GPSDO 1PPS, plus a one-time
+  `--tau-bias` calibration absorbing radiod pipeline latency (1 ms of clock
+  error = 300 km of one-way virtual range).
+
+### Additions
+
+- `software/ka9q-backend/` — radiod configuration, `chirp_tracker.py`
+  (sweep tracking via the ka9q-radio `tune` utility + `pcmrecord` ingest),
+  `dechirp_sweep.py` (segments → ionogram), `test_dechirp_sim.py`.
+- `software/gr-chirpsounder/python/ka9q_iq_source.py` — first implemented
+  block of the OOT module: native RTP multicast source (f32le/s16le/s16be
+  payloads, SSRC filtering, zero-fill on sequence gaps). Replaces the
+  planned ANTSDR/Hermes/RTL-SDR source flowgraphs.
+- `docs/architecture/rx-ka9q.md` — receiver architecture document.
+
+### Implementation notes traceable to ka9q-radio sources (2026-07)
+
+- radiod creates channels **dynamically** on a `tune` command for an unknown
+  SSRC; static config sections force SSRC = freq/kHz — hence no static chirp
+  section in `radiod@chirp.conf`.
+- Default channel encoding is `s16be`; V0.3 pins `f32le` end to end.
+- The `iq` preset defaults to ±5 kHz filter edges; the tracker overrides to
+  ±46 kHz, otherwise 90 % of the channel bandwidth is silently discarded.
+
+### Housekeeping
+
+- `software/examples/dechirp_basic.py` reformatted with black — the V0.2
+  file did not pass the repository's own `python-lint` CI job. All V0.3
+  Python files pass `black --check` and `ruff check`.
+
+### BoM impact
+
+Receiver BoM for stations already running wsprdaemon: **€0** (the same
+RX888/miniPC serves both). For new stations, the wsprdaemon hardware kit
+(per HamSCI sourcing guide) replaces the ANTSDR E200 line item. TX BoM
+unchanged (~€385 excluding GPSDO).
+
+---
+
 ## [V0.2] — 2026-04 — Design review #1
 
 ### Major design corrections following V0.1 internal review

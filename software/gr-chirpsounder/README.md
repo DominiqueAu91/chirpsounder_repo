@@ -7,11 +7,16 @@ EA4GPZ.
 
 ## Status
 
-🚧 **Planned, not yet implemented.** This directory currently contains design
-notes only. Implementation begins in Phase 1 of the project (RX-first approach).
+🚧 **In progress since V0.3.** First block implemented:
+[`python/ka9q_iq_source.py`](python/ka9q_iq_source.py), a native RTP
+multicast source for [ka9q-radio](https://github.com/ka9q/ka9q-radio)
+`radiod` channels (complex64 out; f32le/s16le/s16be payloads; SSRC
+filtering; zero-fill on RTP sequence gaps). Usable today as a GRC
+"Embedded Python Block". Remaining blocks follow in Phase 2.
 
-## Planned blocks
+## Blocks
 
+- `ka9q_iq_source` — radiod multicast IQ source — **implemented (V0.3)**
 - `dechirp` — stretch processing matched filter
 - `range_fft` — fast-time FFT for range bins
 - `direct_leakage_remover` — median subtraction across slow-time
@@ -21,11 +26,17 @@ notes only. Implementation begins in Phase 1 of the project (RX-first approach).
 
 ## Planned flowgraphs
 
-- `flowgraphs/rx_antsdr_passive.grc` — passive RX from ANTSDR E200
-- `flowgraphs/rx_hermeslite_passive.grc` — passive RX from Hermes-Lite 2
-- `flowgraphs/rx_rtlsdr_basic.grc` — minimal RTL-SDR + upconverter
+- `flowgraphs/rx_ka9q_fixed.grc` — fixed-channel RX (30 m SX1262 sounder,
+  Mode A of [`docs/architecture/rx-ka9q.md`](../../docs/architecture/rx-ka9q.md))
+- `flowgraphs/rx_ka9q_swept.grc` — stepped-LO tracking RX for opportunity
+  illuminators (Mode B; sweep control ported from
+  [`software/ka9q-backend/chirp_tracker.py`](../ka9q-backend/chirp_tracker.py))
 - `flowgraphs/calibration_self_test.grc` — internal loopback for pipeline
   validation
+
+The V0.2 flowgraph targets (ANTSDR E200, Hermes-Lite 2, RTL-SDR) are
+dropped; any SDR remains usable offline via
+[`software/examples/dechirp_basic.py`](../examples/dechirp_basic.py).
 
 ## Reference implementation
 

@@ -132,7 +132,11 @@ if __name__ == "__main__":
     echo_delay = 200e3 * 2 / 3e8  # 200 km virtual range
     echo_samples = int(echo_delay * fs)
     echo = np.roll(direct, echo_samples) * 0.1
-    iq = direct + echo + 0.01 * (np.random.randn(len(direct)) + 1j * np.random.randn(len(direct)))
+    iq = (
+        direct
+        + echo
+        + 0.01 * (np.random.randn(len(direct)) + 1j * np.random.randn(len(direct)))
+    )
 
     dechirped = dechirp(iq, sf, bw, fs)
     rd_map = range_doppler_map(dechirped, sf, fs)
