@@ -38,15 +38,28 @@ typedef enum {
 } state_t;
 
 static volatile state_t current_state = STATE_BOOT;
-static volatile bool fault_acknowledged = false;
+
+/* V0.4: Core 1 → Core 0 completion handshake. Core 1 is the single
+ * writer of these flags; Core 0 is the single reader and clears them
+ * on state entry. Single-producer/single-consumer bool flags are safe
+ * on RP2040 without further synchronization. */
+static volatile bool cw_id_done = false;
+static volatile bool dwell_done = false;
+
+/* V0.4: seconds of TX since the last CW identification; regulatory.md
+ * requires re-identification at least every 10 minutes. */
+static uint32_t tx_seconds_since_id = 0;
+#define REID_INTERVAL_S 600
 
 /* Core 1 entry: RF chain control loop */
 void core1_main(void) {
     while (true) {
         if (current_state == STATE_DWELL_TX) {
-            rf_chain_emit_chirp_dwell();
+            rf_chain_emit_chirp_dwell();   /* blocks for one dwell */
+            dwell_done = true;
         } else if (current_state == STATE_CW_ID || current_state == STATE_CW_ID_FINAL) {
-            rf_chain_emit_cw_callsign();
+            rf_chain_emit_cw_callsign();   /* blocks until callsign sent */
+            cw_id_done = true;
         } else {
             rf_chain_idle();
         }
@@ -56,7 +69,10 @@ void core1_main(void) {
 
 /* State machine on Core 0 */
 state_t state_machine_step(state_t s) {
-    if (safety_pa_fault_active()) {
+    if (safety_pa_fault_active() && s != STATE_FAULT) {
+        safety_set_pa_enable(false);   /* V0.4: belt-and-braces — drop GP15
+                                          even though the hardware chain has
+                                          already opened the relay */
         logging_record_fault();
         return STATE_FAULT;
     }
@@ -83,25 +99,53 @@ state_t state_machine_step(state_t s) {
                 ihm_show_error("Safety self-test failed");
                 return STATE_FAULT;
             }
+            cw_id_done = false;
             return STATE_CW_ID;
 
         case STATE_CW_ID:
-            return STATE_DWELL_TX;
+            /* V0.4 FIX: wait for Core 1 to finish the callsign. The V0.2
+             * skeleton transitioned after one 50 ms tick — the CW ID never
+             * completed on air. */
+            if (cw_id_done) {
+                tx_seconds_since_id = 0;
+                dwell_done = false;
+                return STATE_DWELL_TX;
+            }
+            return STATE_CW_ID;
 
         case STATE_DWELL_TX:
-            if (logging_dwell_complete()) return STATE_PAUSE;
+            if (dwell_done) {
+                tx_seconds_since_id += config_dwell_seconds();
+                return STATE_PAUSE;
+            }
             return STATE_DWELL_TX;
 
         case STATE_PAUSE:
-            if (logging_schedule_complete()) return STATE_CW_ID_FINAL;
+            if (logging_schedule_complete()) {
+                cw_id_done = false;
+                return STATE_CW_ID_FINAL;
+            }
+            /* V0.4 FIX: regulatory re-identification every 10 minutes of
+             * accumulated TX time. V0.2 looped PAUSE → DWELL_TX and only
+             * identified at start and end of schedule. */
+            if (tx_seconds_since_id >= REID_INTERVAL_S) {
+                cw_id_done = false;
+                return STATE_CW_ID;
+            }
+            dwell_done = false;
             return STATE_DWELL_TX;
 
         case STATE_CW_ID_FINAL:
-            return STATE_IDLE;
+            if (cw_id_done) return STATE_IDLE;
+            return STATE_CW_ID_FINAL;
 
         case STATE_FAULT:
-            if (ihm_button_pressed(BTN_MENU) && fault_acknowledged) {
-                fault_acknowledged = false;
+            /* V0.4 FIX: the V0.2 skeleton gated on a fault_acknowledged
+             * flag that no code path ever set — FAULT was unrecoverable.
+             * Policy (docs/cards/06-safety.md): MENU acknowledges after
+             * the operator has physically verified the cause. */
+            if (ihm_button_pressed(BTN_MENU)) {
+                logging_record_fault_ack();
                 return STATE_IDLE;
             }
             return STATE_FAULT;

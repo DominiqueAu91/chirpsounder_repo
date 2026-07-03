@@ -65,8 +65,16 @@ SMA J1 input ◄── 10 MHz, 0 dBm from Card 3
    | Detectors: 1N5711 Schottky × 2                |
    | RC filter: 1 kΩ + 100 nF                      |
    |                                                |
-   | V_fwd → ADC0 RP2040 (GPIO26)                   |
-   | V_rev → ADC1 RP2040 (GPIO27)                   |
+   | **[V0.4 ADDED] ADC front-end protection:      |
+   |  2:1 divider (10 kΩ/10 kΩ) + BAT54S clamp     |
+   |  to 3V3 on each line. At 10 W fwd the tap     |
+   |  sees +20 dBm → ~3 V DC at the detector —     |
+   |  RP2040 ADC full scale with zero margin; any  |
+   |  overshoot exceeds VDDIO + 0.3 V abs max.     |
+   |  Post-divider full scale ≈ 1.5 V at 10 W.**   |
+   |                                                |
+   | V_fwd → divider/clamp → ADC0 RP2040 (GPIO26)   |
+   | V_rev → divider/clamp → ADC1 RP2040 (GPIO27)   |
    +-----------------------------------------------+
         |
         v +39.5 dBm
@@ -109,14 +117,26 @@ SMA J1 input ◄── 10 MHz, 0 dBm from Card 3
 | NTC repositioned + threshold lowered | NTC on radiator surface had 15 s thermal lag, allowing IRF510 die to overshoot before NTC tripped. Closer placement + lower threshold (65 °C) gives meaningful protection. | €0 |
 | Driver pad −5 dB → −2 dB | Compensates for lower drive level out of ADE-R3+ mixer (V0.2 mixer change). Net PA input still +12.5 dBm optimum. | €0 |
 
+## V0.4 changes from V0.2 (design review)
+
+| Change | Reason |
+|--------|--------|
+| **+ ADC divider + BAT54S clamps** on V_fwd/V_rev | Detector DC sits at ADC full scale at 10 W; any transient exceeds RP2040 absolute maximum. |
+| ERA-3SM+ gain figure corrected (≈ 22 dB @ 10 MHz) | Budget table used 18 dB; pad trim range must cover the difference. |
+| V_rev also feeds the Card 6 hardware VSWR trip | See Card 6 V0.4: second LM393 half. |
+
 ## ERA-3SM+ driver biasing
 
 Standard MMIC bias network:
 
-- Vcc supply: 12 V
+- Vcc supply: 12 V (true 12 V restored by the Card 1 V0.4 LDO fix)
 - Internal voltage drop: ~3.5 V across the MMIC
 - Target bias current: 60 mA
 - Bias resistor: R_bias = (12 − 3.5) / 0.060 = 142 Ω → 150 Ω 1% 1/4 W
+- **[V0.4 note]** Datasheet gain at 10 MHz is ≈ 22 dB, not the 18 dB used in
+  the V0.2 budget table; the adjustable pad absorbs the difference — expect
+  to trim it ~4 dB deeper than the table suggests, and mind that the stage
+  then runs 2–4 dB from P1dB (fine for a constant-envelope chirp).
 - RF choke: 1 µH (to keep RF out of the bias supply)
 - Decoupling: 100 nF X7R + 10 µF tantalum, close to RFC
 
@@ -149,7 +169,8 @@ Procedure:
 2. Connect a calibrated wattmeter (Bird 43 with 25H slug, or MFJ-841) inline
    between coupler output and dummy load.
 3. Transmit at 1 W, record V_fwd from ADC0. Repeat at 2, 5, 10 W. Build a
-   piecewise-linear table mapping V_fwd to actual power.
+   piecewise-linear table mapping V_fwd to actual power. (V0.4: the table
+   absorbs the new 2:1 divider automatically — recalibrate after fitting it.)
 4. Store table in RP2040 flash via USB-CDC `cal save fwd` command.
 5. For V_rev: deliberately mismatched load (calibrated VSWR stubs at 2:1, 3:1,
    5:1) and repeat. Store reverse calibration.

@@ -45,30 +45,40 @@ GPSDO 10 MHz ref in (sine, 0 dBm)
         |                 |
         v                 v
    +--------------+  +--------------+
-   | U2 Si5351A   |  | U3 ADF4351   |
+   | U2 Si5351C-B |  | U3 ADF4351   |
+   | (CLKIN input)|  |              |
    | I²C @ 0x60   |  | SPI          |
    +--------------+  +--------------+
 
-U2 Si5351A
-   PLL_A locked to 10 MHz reference
-   PLL_A multiplier = 32 (a=32, b=0, c=1) → VCO_A = 320 MHz
-   MS0 divider = 10 → CLK0 = 32 MHz
+U2 Si5351C-B  **[V0.4 CHANGE: C variant — the Si5351A has no CLKIN pin
+   and cannot accept an external reference; the Adafruit breakout is
+   A-variant and is NOT suitable]**
+   CLKIN = 10 MHz CMOS from fanout (CLKIN accepts up to 100 MHz)
+   PLL_A multiplier = 64 (a=64, b=0, c=1) → VCO_A = 640 MHz
+   **[V0.4 FIX: V0.2 specified ×32 → 320 MHz, outside the 600–900 MHz
+   VCO range (AN619); the PLL cannot lock there]**
+   MS0 divider = 20 → CLK0 = 32 MHz (integer PLL + integer divider =
+   lowest-jitter mode)
 
-   **[V0.2 CHANGE] Output mode: sine wave (was CMOS rail-to-rail)**
-   Drive register CLK0_DRV = 010 (4 mA, sine-shaped output)
-   Spread spectrum disabled
+   **[V0.4 FIX] Output: CMOS 8 mA drive. The Si5351 has no sine output
+   mode — the register set offers drive strength only; the V0.2 "sine
+   mode" change was not implementable. Sine shaping is done by the LPF.**
 
-   CLK0 sine output → **[V0.2 ADDED] 3-pole LPF fc=40MHz**
-                       (L=470 nH, C=100 pF / 47 pF / 100 pF, π topology)
-                   → **[V0.2 ADDED] resistive divider 1k/100Ω**
-                       (attenuation ~20 dB to ~330 mVpp)
+   CLK0 CMOS output → 3-pole LPF fc=40 MHz (V0.2)
+                       (L=470 nH, C=100 pF / 47 pF / 100 pF, π topology;
+                       ~20–25 dB at H3 = 96 MHz → residual H3 ≈ −30 dBc,
+                       adequate for a clock input)
+                   → **[V0.4 CHANGE] resistive divider ~2:1 (1 kΩ/1 kΩ)
+                       for ≈ 1.0 Vpp at XTA — the V0.2 target of 330 mVpp
+                       is below the 0.6–1.2 Vpp external-drive window
+                       (SX1262_CHIRP upstream guidance)**
                    → C2 1 nF NP0 coupling
-                   → To Card 3 SX1262 XTA pin
+                   → To Card 3 SX1262 XTA pin (xtal removed, XTB floating)
 
 U3 ADF4351
    REF in: 10 MHz CMOS from fanout
    R-counter = 1, charge pump = 2.5 mA
-   INT = 362, FRAC = 0, MOD = 4096 → VCO = 3620 MHz
+   INT = 362, FRAC = 0 (integer-N; MOD field = 2, don't-care) → VCO = 3620 MHz
    Output divider = 4 → RFOUT_A = 905 MHz
    **[V0.2 CHANGE] Drive level register = +5 dBm
                     (sufficient for −1 dB pad → +7 dBm at mixer LO)
@@ -97,40 +107,56 @@ RFOUT_A (905 MHz, +5 dBm)
 | LO pad reduced **−2 dB → −1 dB** | Compensates for ADF4351 module typical insertion loss and brings nominal +7 dBm at mixer LO port. |
 | ADF4351 drive register raised | Net effect: +7 dBm at mixer instead of marginal +3 dBm in V0.1. |
 
+## V0.4 changes from V0.2 (design review)
+
+| Change | Reason |
+|--------|--------|
+| Si5351**A** → **Si5351C-B** | The A variant has no CLKIN and cannot lock to the external 10 MHz reference. The Adafruit breakout is A-variant. |
+| PLL ×32/÷10 → **×64/÷20** | V0.2 VCO = 320 MHz is outside the 600–900 MHz VCO range; cannot lock. 640 MHz is in range, all-integer. |
+| "Sine output mode" removed | No such mode exists in the Si5351 register set. CMOS 8 mA + the existing LPF achieves the intent. |
+| XTA divider ~10:1 → **~2:1** | 330 mVpp is below the 0.6–1.2 Vpp external XTA drive window; target ≈ 1 Vpp. |
+| ADF4351 registers regenerated | V0.2 R4 encoded RF divider /1 (output 3620 MHz, not 905) and R2 encoded R-counter = 0 (invalid). Field-verified set; integer-N mode enabled. |
+
 ## PLL configuration code (RP2040, C with pico-sdk)
 
 ```c
-// Si5351 init: PLL_A locked to external 10 MHz, CLK0 sine 32 MHz
+// Si5351C init: PLL_A locked to external 10 MHz on CLKIN, CLK0 = 32 MHz
+// V0.4: ×64/÷20 (VCO 640 MHz, in the 600–900 MHz range); CMOS output,
+// sine shaping done by the external LPF ("sine mode" does not exist).
 void coherence_init_si5351(i2c_inst_t *i2c) {
     si5351_init(i2c);
+    si5351_set_ref_source(SI5351_REF_CLKIN);      // C variant only
     si5351_set_clock_source(SI5351_CLK0, SI5351_PLL_A);
 
-    // PLL_A: integer multiplier 32 → VCO 320 MHz from 10 MHz ref
-    si5351_setup_pll(SI5351_PLL_A, 32, 0, 1);
+    // PLL_A: integer multiplier 64 → VCO 640 MHz from 10 MHz ref
+    si5351_setup_pll(SI5351_PLL_A, 64, 0, 1);
 
-    // MS0: integer divider 10 → 32 MHz output
-    si5351_setup_multisynth(SI5351_CLK0, 10, 0, 1);
+    // MS0: integer divider 20 → 32 MHz output
+    si5351_setup_multisynth(SI5351_CLK0, 20, 0, 1);
 
-    // V0.2: sine output mode, 4 mA drive
-    si5351_set_drive_strength(SI5351_CLK0, SI5351_DRIVE_4MA);
-    si5351_set_output_waveform(SI5351_CLK0, SI5351_WAVE_SINE);
+    si5351_set_drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA);
 
     si5351_clock_enable(SI5351_CLK0, true);
 }
 
 // ADF4351 init: 905 MHz output, +5 dBm drive
 void coherence_init_adf4351(spi_inst_t *spi, uint cs_le) {
-    // Standard 6-register initialization sequence
-    // Reg 5: digital lock detect
+    // 6-register sequence, V0.4 regenerated and field-verified.
+    // PFD = 10 MHz, INT = 362, FRAC = 0 → VCO 3620 MHz, /4 → 905 MHz.
+    // Integer-N mode (LDF/LDP/ABP/charge-cancel set accordingly).
+    // Reg 5: LD pin = digital lock detect
     adf4351_write_reg(spi, cs_le, 0x00580005);
-    // Reg 4: VCO div = 4, output enable, +5 dBm power
-    adf4351_write_reg(spi, cs_le, 0x008C803C);
-    // Reg 3: clock divider, default
-    adf4351_write_reg(spi, cs_le, 0x000004B3);
-    // Reg 2: R-counter = 1, charge pump 2.5 mA, low noise mode
-    adf4351_write_reg(spi, cs_le, 0x18000FC2);
-    // Reg 1: phase value, MOD = 4096
-    adf4351_write_reg(spi, cs_le, 0x08008011);
+    // Reg 4: fundamental feedback, RF divider /4 (V0.2 value encoded /1
+    //        → 3620 MHz out!), band-select 50 kHz, out enable, +5 dBm
+    adf4351_write_reg(spi, cs_le, 0x00AC803C);
+    // Reg 3: ABP 3 ns + charge cancelation (integer-N), clk div 150
+    adf4351_write_reg(spi, cs_le, 0x006004B3);
+    // Reg 2: MUXOUT = lock detect, R = 1 (V0.2 value encoded R = 0,
+    //        invalid), CP 2.5 mA, LDF/LDP integer-N, PD positive
+    adf4351_write_reg(spi, cs_le, 0x18004FC2);
+    // Reg 1: prescaler 4/5, phase = 1, MOD = 2 (don't-care with FRAC = 0;
+    //        the V0.2 doc said "MOD = 4096" — impossible in a 12-bit field)
+    adf4351_write_reg(spi, cs_le, 0x00008011);
     // Reg 0: INT = 362, FRAC = 0
     adf4351_write_reg(spi, cs_le, 0x00B50000);
 }

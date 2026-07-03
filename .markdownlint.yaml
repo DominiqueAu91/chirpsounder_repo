@@ -12,3 +12,9 @@ MD013:
 # only forbid duplicates among sibling headings.
 MD024:
   siblings_only: true
+
+# MD060 (new in markdownlint v0.40, arrived via markdownlint-cli2-action@v23):
+# demands uniform pipe padding within tables. Purely cosmetic — compact
+# delimiter rows and padded data rows render identically on GitHub — and a
+# recurring hazard for a table-heavy documentation set. Disabled.
+MD060: false

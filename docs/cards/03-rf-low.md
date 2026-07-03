@@ -18,9 +18,16 @@ then converts it down to 10 MHz on the 30m amateur band by mixing with a coheren
     |
    [C 1nF NP0 coupling]
     |
-    o XTA pin SX1262 module (E22-900M30S)
+    o XTA pin SX1262 module — **[V0.4 CHANGE] Waveshare Core1262-868M
+      (bare SX1262, crystal accessible) with the onboard 32 MHz xtal
+      REMOVED and the external 32 MHz injected per upstream SX1262_CHIRP
+      procedure. The V0.2 choice E22-900M30S is unusable here: it embeds
+      a +30 dBm PA, LNA, RF switch (TXEN/RXEN) and an onboard TCXO, and
+      does not expose XTA — the coherence injection is impossible and
+      the free-running ±2–10 ppm reference (±1.8–9.2 kHz at 915 MHz)
+      exceeds the entire 7.8 kHz chirp bandwidth.**
       XTB floating
-      DIO3 not used (no internal TCXO)
+      DIO3 not used (do NOT call SetDIO3AsTcxoCtrl)
 
 +5 V → SX1262 module Vcc, decoupling 10 µF tant + 100 nF X7R
 
@@ -37,23 +44,27 @@ SX1262 ANT pin:
   +14 dBm @ ~915 MHz, continuous LFM chirp (SetTxContinuousPreamble, opcode 0xD2)
     |
     v
-  π pad −6 dB (R 18 Ω series, R 150 Ω shunts ×2)
+  π pad −15 dB  **[V0.4 CHANGE, was −6 dB: with +6 dBm at the RF port a
+  level-7 mixer runs at LO-level drive, deep in compression. Constant
+  envelope makes this survivable, but conversion loss becomes
+  drive-dependent and out of datasheet conditions. Target RF ≤ LO − 10 dB;
+  the lost gain is recovered at 10 MHz where gain is cheap — see below.]**
     |
-    v +8 dBm @ 915 MHz
+    v −1 dBm @ 915 MHz
     |
-**[V0.2 ADDED] TriQuint TA0902A SAW filter, 902–928 MHz, IL ~2 dB**
+**[V0.2 ADDED] TriQuint TA0902A SAW filter, 902–928 MHz, IL ~2.4 dB**
     |
-    v +6 dBm
+    v −3.4 dBm
     |
 +----------------+
 | ADE-R3+ mixer  |   **[V0.2 SUBSTITUTED, was ADE-1]**
 | 1–3000 MHz     |   Mini-Circuits, level 7 mixer
 |                |
-| pin 1 RF in ◄──── +6 dBm @ 915 MHz (post-SAW)
+| pin 1 RF in ◄──── −3.4 dBm @ 915 MHz (post-SAW; LO − 10 dB ✓ V0.4)
 |                |
 | pin 8 LO in ◄──── +7 dBm @ 905 MHz (from Card 2, V0.2 raised drive level)
 |                |
-| pin 3,4 IF out ─► 10 MHz @ −1 dBm (and 1820 MHz sum, suppressed by IF BPF)
+| pin 3,4 IF out ─► 10 MHz @ ≈ −11 dBm (and 1820 MHz sum, suppressed by IF BPF)
 +----------------+
     |
     v
@@ -69,7 +80,13 @@ SX1262 ANT pin:
 | Cc_io = 22 pF, Cc_inner = 4.7 / 3.3 pF    |
 +--------------------------------------------+
     |
-    v 0 dBm @ 10 MHz, 500 kHz usable BW, IL = 2 dB
+    v ≈ −13 dBm @ 10 MHz, 500 kHz usable BW, IL = 2 dB
+    |
+**[V0.4 ADDED] 10 MHz post-BPF gain stage: ERA-3SM+ (+18 dB min at HF)
+ followed by trim pad −5 dB → restores 0 dBm nominal at J3. Bonus: the
+ MMIC buffers the BPF from inter-card load variations. (~€2)**
+    |
+    v 0 dBm @ 10 MHz nominal (trim pad sets exact level)
     |
     o J3 SMA panel → coax → Card 4
 ```
@@ -94,25 +111,43 @@ sx1262_cmd(0x80, {0x00});  // SetStandby(STDBY_RC)
 // Packet type
 sx1262_cmd(0x8A, {0x01});  // SetPacketType(LORA)
 
-// Frequency
-// f = 915 MHz, regs = floor(f * 2^32 / 32e6) = 0xE4400000
-sx1262_cmd(0x86, {0xE4, 0x40, 0x00, 0x00});  // SetRfFrequency
-
-// Image calibration
+// Image calibration (before frequency, per Semtech examples)
 sx1262_cmd(0x98, {0xE1, 0xE9});  // CalibrateImage 902-928 MHz
 
-// Modulation: SF12, BW = 7.8125 kHz, CR = 1, LDRO on
-sx1262_cmd(0x8B, {0x0C, 0x00, 0x01, 0x01});
+// Frequency — V0.4 FIX
+// Frf = reg × F_XTAL / 2^25  →  reg = 915e6 × 2^25 / 32e6 = 0x39300000
+// (V0.2 value 0xE4400000 used a 2^32 formula that matches no SX126x
+//  convention and does not command 915 MHz)
+sx1262_cmd(0x86, {0x39, 0x30, 0x00, 0x00});  // SetRfFrequency
 
-// Output power: target +14 dBm at chip output
-// power = -3 (registered), ramp = 200 µs
-sx1262_cmd(0x8E, {0xFD, 0x04});  // SetTxParams
+// PA configuration — V0.4 ADDED (was missing entirely)
+// SX1262 optimal +14 dBm operating point per datasheet §13.1.14:
+// paDutyCycle=0x02, hpMax=0x02, deviceSel=0x00 (SX1262), paLut=0x01
+sx1262_cmd(0x95, {0x02, 0x02, 0x00, 0x01});  // SetPaConfig
+
+// Output power — V0.4 FIX: with the scaled PA config above, the power
+// byte must be +22 (0x16) to obtain +14 dBm at the pin — Semtech's
+// documented quirk. (V0.2 had 0xFD = −3 dBm against a +14 dBm target.)
+sx1262_cmd(0x8E, {0x16, 0x04});  // SetTxParams(+22 w/ scaled PA, 200 µs)
+
+// Modulation: SF12, BW = 7.8125 kHz, CR = 4/5, LDRO on
+sx1262_cmd(0x8B, {0x0C, 0x00, 0x01, 0x01});
 
 // Start coherent chirp
 sx1262_cmd(0xD2, {});  // SetTxContinuousPreamble
 ```
 
 To stop: `sx1262_cmd(0x80, {0x00})` returns to standby.
+
+## V0.4 changes from V0.2 (design review)
+
+| Change | Reason |
+|--------|--------|
+| E22-900M30S → **Waveshare Core1262** (xtal removed) | The M30S embeds PA/LNA/switch/TCXO and hides XTA: coherence injection impossible; free-running reference drift exceeds the chirp bandwidth. |
+| RF pad −6 dB → **−15 dB** | RF port at LO − 10 dB restores datasheet-compliant level-7 mixer operation. |
+| **+ 10 MHz post-BPF gain stage** | Recovers the padded-away level where gain is cheap; buffers the BPF. |
+| `SetRfFrequency` corrected | 915 MHz = 0x39300000 (reg × F_XTAL/2²⁵); V0.2 value was wrong under any convention. |
+| **+ `SetPaConfig`** and power byte fixed | +14 dBm on SX1262 requires SetPaConfig(0x02,0x02,0x00,0x01) + power = +22; both were wrong/missing in V0.2. |
 
 ## ADE-R3+ details
 

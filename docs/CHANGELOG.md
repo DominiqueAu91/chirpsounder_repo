@@ -4,6 +4,65 @@ All notable design changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [V0.4 — unreleased] — TX design review fixes
+
+Receiver-side V0.3 review extended to the transmitter and applicative parts.
+Full findings with severity ranking: [`docs/reviews/tx-review-v0.4-input.md`](reviews/tx-review-v0.4-input.md).
+
+### Blockers fixed (design did not work as documented)
+
+- **Card 2**: Si5351A → Si5351C-B (A variant has no CLKIN, cannot lock to
+  the GPSDO); PLL ×32/÷10 → ×64/÷20 (V0.2 VCO at 320 MHz was outside the
+  600–900 MHz range); nonexistent "sine output mode" removed (CMOS + LPF
+  achieves the intent); XTA drive raised to ≈ 1 Vpp (0.6–1.2 Vpp window).
+- **Card 3**: E22-900M30S → Waveshare Core1262 with xtal removed — the M30S
+  hides XTA (coherence injection impossible) and embeds a +30 dBm PA/TCXO;
+  SX1262 init corrected (`SetRfFrequency` = 0x39300000; `SetPaConfig` added;
+  power byte +22 with scaled PA for +14 dBm).
+- **Card 1**: input specified 13.8 V nominal; LM7812 → LM2940-12 LDO (the
+  7812 cannot regulate from a 12 V input; "12V_clean" was ~9.5 V unregulated).
+- **Card 6**: AND chain now gates a 2N7000 driving the relay coil (V0.2
+  routed coil current through a 4N35 and an LM393 OC, beyond both ratings).
+- **ADF4351**: register set regenerated and field-verified (V0.2 R4 encoded
+  RF divider ÷1 → 3620 MHz out; R2 encoded R-counter = 0, invalid).
+- **Firmware**: FAULT state made recoverable; CW identification completes
+  before dwell (completion handshake); 10-minute re-identification
+  implemented; PA_ENABLE dropped in software on fault.
+
+### Majors
+
+- Mixer level plan: RF pad −6 → −15 dB (RF port at LO − 10 dB); new 10 MHz
+  post-BPF gain stage restores 0 dBm at the card output.
+- ADC front-end: 2:1 divider + BAT54S clamps on V_fwd/V_rev (detector DC
+  sat at RP2040 full scale with zero margin).
+- Card 6: + hardware VSWR trip (spare LM393 half); + CD4060 TX-time limiter
+  (~10.4 min backstop) making the regulatory "hardwired limit" claim true;
+  `regulatory.md` corrected accordingly.
+- Phase-noise budget rewritten with correct multiplication/correlation
+  treatment: total ≈ −82 dBc/Hz at 1 kHz dominated by the Si5351→SX1262
+  path (V0.2's −95 was optimistic); SF12 conclusion survives with reduced
+  margin; the shared-reference cancellation (worth ≈ 39 dB) is now claimed.
+
+### Additions
+
+- `tests/integration-zero-baseline.md` — pre-air validation procedure:
+  compression gain, measured L(f), pulse-to-pulse phase continuity (gates
+  the TID mode), absolute frequency accuracy, thermal soak.
+- `docs/reviews/tx-review-v0.4-input.md` — the full review, including open
+  V1.0 forks (direct-GPSDO 32 MHz vs DDS architecture) deliberately left
+  as design decisions.
+
+### Housekeeping
+
+- Root-level debris removed (`rx-ka9q.md`, `CHANGELOG.md`, `v0.2-to-v0.3.diff`
+  — copy-accident leftovers duplicating `docs/` content).
+- `.markdownlint.yaml`: MD060 disabled (the fix from the CI session was
+  never pushed; folded in here).
+- BoM deltas: Card 2 +€2 (Si5351C), Card 3 −€4.50 net (Core1262 cheaper than
+  M30S, + IF gain stage).
+
+---
+
 ## [V0.3] — 2026-07 — Receiver platform migration to ka9q-radio
 
 ### Scope

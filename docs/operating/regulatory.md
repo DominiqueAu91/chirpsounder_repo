@@ -37,12 +37,18 @@ REF (beacon coordinator F5NOD or successor) before first activation.
 
 ## Hardware-enforced limits
 
-The Card 6 watchdog imposes physical limits beyond firmware configuration:
+**[V0.4 correction]** The V0.2 text claimed the Card 6 watchdog imposed a
+hardwired 10-minute emission limit. It did not: the 555 is a 1.7 s
+firmware-liveness watchdog and holds as long as firmware kicks it — a
+compliance claim must match the hardware. As of V0.4 the claim is made true:
 
-- 10 minutes maximum continuous emission, after which firmware mandatorily
-  enters pause for CW identification + duty cycle bookkeeping.
-- This is wired, not configurable, ensuring regulatory compliance even with
-  misconfigured firmware.
+- The firmware FSM enforces the precise limit (re-identification every
+  10 minutes of accumulated TX, dwell/pause scheduling — see
+  `firmware/rp2040/src/main.c`).
+- A **CD4060 TX-time counter on Card 6** (nominal 10.4 min, RC-tolerance
+  band 8.3–12.4 min, reset on PTT release) is the hardwired backstop that
+  opens the PA relay even if healthy firmware is misconfigured into
+  continuous transmission. This element is not firmware-configurable.
 
 ## Pre-deployment notifications
 

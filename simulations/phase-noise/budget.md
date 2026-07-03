@@ -1,65 +1,92 @@
-# Phase noise budget
+# Phase noise budget — V0.4 (method corrected)
 
-## V0.2 budget at 10 MHz IF, 1 kHz offset
+The V0.2 budget RSS-summed spot values quoted at different carrier
+frequencies. That is not how phase noise combines through this chain: noise
+transfers to the 10 MHz IF **scaled by the multiplication each path applies**,
+and contributions derived from the **shared reference are correlated** between
+the RF and LO paths and largely cancel at the difference frequency. Both
+effects are first-order; the V0.2 total (−95 dBc/Hz) mixed them up.
 
-| Source | Phase noise | Notes |
-|--------|-------------|-------|
-| GPSDO 10 MHz reference | -125 dBc/Hz | Trimble Thunderbolt or equivalent |
-| Si5351 + 32 MHz lock (sine mode, V0.2) | -110 dBc/Hz @ 32 MHz | Improved ~5 dB vs V0.1 CMOS mode |
-| ADF4351 + 905 MHz lock | -95 dBc/Hz @ 905 MHz | Dominant term |
-| SX1262 PLL @ 915 MHz | -95 dBc/Hz @ 915 MHz | Similar to ADF4351 |
-| Mixer ADE-R3+ | negligible (< -130 dBc/Hz) | Floor |
-| **Total at 10 MHz IF** | **≈ -95 dBc/Hz @ 1 kHz** | |
+## Transfer model
 
-## Verification
-
-Combined RSS calculation:
+The IF phase is φ_IF = φ_RF − φ_LO with:
 
 ```text
-P_total = -10 * log10(sum(10^(P_i/10) for i in sources))
-        ≈ -95 dBc/Hz @ 1 kHz offset
+RF path: 10 MHz ref ──×3.2──► 32 MHz (Si5351) ──×28.59──► 915 MHz (SX1262 PLL)
+LO path: 10 MHz ref ──×90.5──────────────────────────────► 905 MHz (ADF4351)
 ```
 
-## Margin analysis for SF12 / BW = 7.8 kHz
+Inside the loop bandwidths of all three PLLs:
 
-Pulse compression gain at SF12:
+- **Reference noise** reaches the RF side ×91.5 and the LO side ×90.5,
+  correlated. At the IF difference it appears scaled by (91.5 − 90.5) = ×1:
+  the GPSDO contributes at its **raw** level, not multiplied. This is the
+  quantitative content of design principle 1 ("coherence by construction")
+  and is worth ≈ 39 dB relative to a naive uncorrelated treatment.
+- **Additive noise of each synthesizer** (its own PFD/CP/VCO/output noise,
+  on top of the multiplied reference) is uncorrelated between paths and adds
+  in power. Si5351 additive noise is further multiplied ×28.59 (+29.1 dB) by
+  the SX1262 PLL — this is the term the V0.2 budget missed.
+
+Caveat: reference cancellation is exact only for identical loop transfer
+functions and zero differential delay; in practice expect 20–30 dB of
+suppression rather than perfect cancellation below a few kHz offset —
+still enough to make the reference term negligible.
+
+## Budget at 1 kHz offset, referred to the 10 MHz IF
+
+| Term | At its carrier | Transfer to IF | At IF |
+|------|----------------|----------------|-------|
+| GPSDO reference (Thunderbolt-class, −135…−140 dBc/Hz measured; V0.2 used −125 conservative) | −140 | ×1 (correlated difference) | ≈ −140 |
+| Si5351 additive (≈ −112 dBc/Hz at 32 MHz after removing the ref part of the −110 measured) | −112 | +29.1 dB (×28.59 in SX1262 PLL) | **≈ −82** |
+| ADF4351 additive (chip in-band floor: −220 + 10·log10(10 MHz PFD) + 20·log10(362) ≈ −99) | −99 | ×1 | ≈ −99 |
+| SX1262 PLL additive at 915 MHz | ≈ −99 | ×1 | ≈ −99 |
+| ADE-R3+ mixer | < −130 | ×1 | negligible |
+| **Total** | | | **≈ −82 dBc/Hz** |
+
+The dominant term is the **Si5351 → SX1262 multiplication path**, ~17 dB
+above everything else. The V0.2 figure of −95 dBc/Hz was optimistic by
+roughly that margin.
+
+## Impact on pulse compression
+
+What multiplicative phase noise costs after dechirp is the integrated
+double-sideband noise around each echo. Taking L(f) ≈ −82 dBc/Hz roughly
+flat over the offsets that matter (1/T_sym ≈ 2 Hz to BW/2 = 3.9 kHz):
 
 ```text
-G_pc = 10 * log10(2^12) = 36 dB
+Sideband total ≈ −82 + 10·log10(3900) + 3 (DSB) ≈ −43 dBc
 ```
 
-Required SNR at output of compression for detection:
+The compressed-pulse peak therefore stands at best ~43 dB above its own
+phase-noise pedestal. Against the SF12 processing gain of 36 dB this is
+**adequate but no longer generous** — and it caps the benefit of going to
+SF13/SF14 (39/42 dB nominal gain) at essentially nothing.
 
-```text
-SNR_out = 10 dB (typical for ionogram pixel)
-```
+Consequences:
 
-Required SNR at input:
+1. SF12 / 7.8 kHz operation: phase noise is not the limiting factor —
+   the V0.2 conclusion survives, with ~7 dB margin instead of ~20.
+2. Higher-SF modes: gated by the Si5351 path. The single highest-leverage
+   improvement is deleting it (review item **E1**: programmable GPSDO
+   delivering 32 MHz directly to XTA), which removes the ×28.59 multiplied
+   term and returns the budget to ≈ −99 dBc/Hz, ADF/SX-limited.
+3. Offsets below 1/T_sym (≈ 2 Hz) do not blur single dwells but produce
+   dwell-to-dwell phase wander — the quantity that matters for coherent
+   Doppler integration (TID mode). It is dominated by the same Si5351 path
+   plus reference flicker, and is best **measured, not modeled**: see
+   `tests/integration-zero-baseline.md`, step 4.
 
-```text
-SNR_in = SNR_out - G_pc = 10 - 36 = -26 dB
-```
+## Bistatic note
 
-Phase noise contribution to noise floor in 1 Hz bandwidth:
+With independent GPSDOs at TX and RX, the reference terms no longer share a
+cancellation path — but at −135…−140 dBc/Hz raw they remain ~40 dB below
+the Si5351 term, so the single-site budget carries over unchanged.
 
-```text
-N_pn = -95 dBc/Hz
-```
+## Measurement plan
 
-For BW = 7.8 kHz integration:
-
-```text
-N_pn_total = -95 + 10 * log10(7800) = -95 + 38.9 = -56 dBc
-```
-
-This is well below the chirp signal level, so phase noise is **not the
-limiting factor** for our application. Thermal noise from the receiver
-(typically -174 dBm/Hz noise floor at antenna + receiver noise figure
-~3 dB) and external HF noise (typically -100 to -120 dBm/Hz at 10 MHz
-in rural site) dominate.
-
-## Conclusion
-
-V0.2 phase noise budget is comfortable for the intended SF12 / 7.8 kHz mode.
-Future modes with higher SF (compression gain > 40 dB) might benefit from
-better LO sources, but for the current scope, we're not phase-noise-limited.
+All numbers above marked "≈" are datasheet-typical placeholders. The
+zero-baseline bench (dummy load, −60 dB tap, RX888) yields the real L(f) at
+the IF in one session: dechirp a dwell, FFT the tone, read the sideband
+skirt directly. Replace this table with measured values before V1.0
+decisions (E1 vs E2) are taken.

@@ -1,5 +1,5 @@
 ref,component,quantity,unit_price_eur,total_eur,supplier,notes
-U_chirp,Ebyte E22-900M30S module (SX1262),1,20.00,20.00,Ebyte/AliExpress,
+U_chirp,Waveshare Core1262-868M (bare SX1262; remove xtal; inject 32 MHz),1,13.00,13.00,Waveshare,V0.4: E22-900M30S hides XTA - coherence impossible
 Pad_RF,R 18/150/150 Ω 1206 1% pi pad -6 dB,3,0.30,0.90,LCSC,
 SAW_RF,TriQuint TA0902A 902-928 MHz SAW,1,5.00,5.00,Mouser,V0.2 NEW: RF input filtering
 Mixer,Mini-Circuits ADE-R3+ QFN 6x4 mm,1,12.00,12.00,Mouser,V0.2 SUBSTITUTED for ADE-1
@@ -7,4 +7,5 @@ BPF_L,Toroids T50-6 yellow + 0.5 mm enameled wire,5,1.00,5.00,Amidon/Kits and Pa
 BPF_C,100 pF NP0 1206 + trimmer 5-30 pF Sprague,10,0.50,5.00,LCSC,Alignment trimmers
 BPF_Cc,4.7/3.3/22 pF NP0 1206 1%,6,0.20,1.20,LCSC,Coupling capacitors
 Connectors_inter,SMA inter-card pigtails,2,3.00,6.00,Mouser,
-TOTAL,,,,€55.10,,V0.2 vs V0.1: +€9 for SAW + ADE-R3+ delta
+Gain_IF,ERA-3SM+ + bias R + RFC + trim pad (10 MHz post-BPF stage),1,2.50,2.50,Mouser/LCSC,V0.4 NEW: recovers mixer drive reduction
+TOTAL,,,,€50.60,,V0.4 vs V0.2: module swap -EUR7 + IF gain stage +EUR2.50

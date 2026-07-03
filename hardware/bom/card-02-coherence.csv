@@ -1,7 +1,7 @@
 ref,component,quantity,unit_price_eur,total_eur,supplier,notes
 J1,SMA panel 50 Ω,1,3.00,3.00,Mouser,GPSDO reference input
 U1,ADCMP562BRQZ comparator,1,8.00,8.00,Mouser,Or 74AC04 economical (€0.50)
-U2,Adafruit Si5351 breakout,1,8.00,8.00,Adafruit/Pimoroni,Sine-mode capable
+U2,Si5351C-B-GT (CLKIN variant) on breakout or custom footprint,1,10.00,10.00,Mouser/LCSC,V0.4: A-variant (Adafruit) has no CLKIN - unsuitable
 U3,ADF4351 module Chinese,1,18.00,18.00,AliExpress,Includes loop filter and SMA out
 R_termination,50 Ω + bias resistors,4,0.10,0.40,LCSC,
 C_decoup,Decoupling caps + ferrite BLM18AG121,8,0.25,2.00,LCSC,Including BLM18AG121 ferrite
